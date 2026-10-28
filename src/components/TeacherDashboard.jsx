@@ -315,19 +315,36 @@ export default function TeacherDashboard({
                     )}
                     {student.isFosterHomeless && (
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-100 text-pink-800 border border-pink-200">
-                        Foster/Homeless
+                        {student.isFoster ? 'Foster Program' : (student.isHomeless ? 'Homeless Program' : 'Foster / Homeless')}
                       </span>
                     )}
-                    {student.hasYoYDecline && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
+                    {student.hasSignificantDecline && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1" title="Significant drop > 10% (or > 10 pp)">
                         <TrendingDown className="w-3 h-3 text-rose-600" />
-                        YoY Decline
+                        🔴 Significant Decline
                       </span>
                     )}
-                    {!student.hasYoYDecline && student.overallYoYStatus === 'growth' && (
+                    {!student.hasSignificantDecline && student.hasYoYDecline && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1" title="Moderate drop between 2% and 10% (or 2-10 pp)">
+                        <TrendingDown className="w-3 h-3 text-amber-600" />
+                        🟠 Moderate Decline
+                      </span>
+                    )}
+                    {!student.hasYoYDecline && student.hasStrongGrowth && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1" title="Strong gain > 10% (or > 10 pp)">
+                        <TrendingUp className="w-3 h-3 text-emerald-600" />
+                        🚀 Strong Growth
+                      </span>
+                    )}
+                    {!student.hasYoYDecline && !student.hasStrongGrowth && student.overallYoYStatus === 'growth' && (
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
                         <TrendingUp className="w-3 h-3 text-emerald-600" />
-                        YoY Growth
+                        🟢 Moderate Growth
+                      </span>
+                    )}
+                    {!student.hasYoYDecline && student.overallYoYStatus === 'steady' && student.yoyComparisons.length > 0 && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
+                        🟡 Maintained
                       </span>
                     )}
                     {student.matchedTabs?.map((t) => (
@@ -480,7 +497,7 @@ export default function TeacherDashboard({
                         )}
                         {s.isFosterHomeless && (
                           <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-pink-100 text-pink-800">
-                            Foster
+                            {s.isFoster ? 'Foster' : (s.isHomeless ? 'Homeless' : 'Foster/HL')}
                           </span>
                         )}
                       </div>
@@ -495,11 +512,16 @@ export default function TeacherDashboard({
                     </td>
                     <td className="py-3 px-3 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        s.hasSignificantDecline ? 'bg-rose-100 text-rose-800' :
+                        s.hasYoYDecline ? 'bg-amber-100 text-amber-800' :
+                        s.hasStrongGrowth ? 'bg-emerald-100 text-emerald-800 font-extrabold' :
                         s.overallYoYStatus === 'growth' ? 'bg-emerald-100 text-emerald-800' :
-                        s.overallYoYStatus === 'decline' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                        'bg-slate-100 text-slate-700'
                       }`}>
-                        {s.overallYoYStatus === 'growth' ? '🟢 Growth' :
-                         s.overallYoYStatus === 'decline' ? '🔴 Decline' : '🟡 Steady'}
+                        {s.hasSignificantDecline ? '🔴 Sig. Decline' :
+                         s.hasYoYDecline ? '🟠 Mod. Decline' :
+                         s.hasStrongGrowth ? '🚀 Strong Growth' :
+                         s.overallYoYStatus === 'growth' ? '🟢 Growth' : '🟡 Maintained'}
                       </span>
                     </td>
                     <td className="py-3 px-3 text-center">

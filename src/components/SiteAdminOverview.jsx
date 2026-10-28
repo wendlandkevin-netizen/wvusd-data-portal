@@ -31,9 +31,24 @@ export default function SiteAdminOverview({
 
   const totalCount = siteStudents.length;
 
+  // Filter out TK, K, TOTS, and 0 since they don't have benchmarks (Grades 1st through 5th only)
+  const isElementaryBenchmarkGrade = (g) => {
+    const s = String(g || '').toUpperCase().trim();
+    if (['TK', 'K', 'TOTS', '0', 'KINDERGARTEN', 'TRANSITIONAL KINDERGARTEN'].includes(s)) {
+      return false;
+    }
+    return ['1ST', '2ND', '3RD', '4TH', '5TH', '1', '2', '3', '4', '5'].some(
+      valid => s === valid || s.startsWith(valid)
+    );
+  };
+
+  // Benchmark cohort: Grades 1-5 students with benchmark assessments
+  const benchmarkCohort = siteStudents.filter(s => isElementaryBenchmarkGrade(s.gradeStr || s.grade));
+  const benchmarkCohortCount = benchmarkCohort.length;
+
   // Key KPI metrics
-  const benchmarkCount = siteStudents.filter(s => s.isBenchmark).length;
-  const benchmarkPct = totalCount > 0 ? Math.round((benchmarkCount / totalCount) * 100) : 0;
+  const benchmarkCount = benchmarkCohort.filter(s => s.isBenchmark).length;
+  const benchmarkPct = benchmarkCohortCount > 0 ? Math.round((benchmarkCount / benchmarkCohortCount) * 100) : 0;
 
   const elStudents = siteStudents.filter(s => s.isEL);
   const elCount = elStudents.length;
@@ -50,24 +65,27 @@ export default function SiteAdminOverview({
 
   const fosterHomelessStudents = siteStudents.filter(s => s.isFosterHomeless);
   const fosterHomelessCount = fosterHomelessStudents.length;
+  const homelessCount = siteStudents.filter(s => s.isHomeless).length;
+  const fosterCount = siteStudents.filter(s => s.isFoster).length;
 
   const regressionStudents = siteStudents.filter(s => s.hasYoYDecline);
   const regressionCount = regressionStudents.length;
   const regressionPct = totalCount > 0 ? Math.round((regressionCount / totalCount) * 100) : 0;
+  const sigDeclineCount = siteStudents.filter(s => s.hasSignificantDecline).length;
 
   const growthStudents = siteStudents.filter(s => s.overallYoYStatus === 'growth');
   const growthCount = growthStudents.length;
+  const strongGrowthCount = siteStudents.filter(s => s.hasStrongGrowth).length;
 
   const tier3InterventionStudents = siteStudents.filter(s => s.hasTier3Phonics || s.hasYoYDecline);
   const tier3Count = tier3InterventionStudents.length;
 
-  // Dynamic Grade-Level Breakdown Matrix
+  // Dynamic Grade-Level Breakdown Matrix (1st through 5th Grade only - TK & K excluded)
   const rawGrades = Array.from(
     new Set(siteStudents.map(s => s.gradeStr || (s.grade !== undefined ? `${s.grade}` : '')).filter(Boolean))
-  );
+  ).filter(isElementaryBenchmarkGrade);
 
   const gradeSortOrder = {
-    'TK': 0, 'TOTS': 0, 'K': 0.5, '0': 0.5,
     '1ST': 1, '1': 1,
     '2ND': 2, '2': 2,
     '3RD': 3, '3': 3,
@@ -233,7 +251,7 @@ export default function SiteAdminOverview({
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">{totalCount}</div>
           <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
-            <span>Rostered</span>
+            <span>{benchmarkCohortCount} in Grades 1–5</span>
           </div>
         </div>
 
@@ -245,7 +263,7 @@ export default function SiteAdminOverview({
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{benchmarkPct}%</div>
           <div className="text-[11px] text-slate-500 mt-1">
-            {benchmarkCount} of {totalCount} on target
+            {benchmarkCount} of {benchmarkCohortCount} on target (Grades 1–5)
           </div>
         </div>
 
@@ -253,6 +271,7 @@ export default function SiteAdminOverview({
         <div 
           onClick={() => onDrilldown({ filter: 'All' })}
           className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-2xs hover:shadow-xs hover:border-emerald-400 transition cursor-pointer group"
+          title="5-Tier Scale: Strong Growth (> +10% or > +5 pp), Moderate Growth (+2% to +10% or +2 to +5 pp). Maintained band is ±2% (±2.0 pp)."
         >
           <div className="flex items-center justify-between text-emerald-700 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">YoY Growth</span>
@@ -260,7 +279,7 @@ export default function SiteAdminOverview({
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{growthCount}</div>
           <div className="text-[11px] text-emerald-700/80 mt-1 flex items-center justify-between">
-            <span>{totalCount > 0 ? Math.round((growthCount / totalCount) * 100) : 0}% accelerated</span>
+            <span>{strongGrowthCount} Strong (&gt;10% / &gt;5pp)</span>
             <ChevronRight className="w-3.5 h-3.5 text-emerald-500 opacity-0 group-hover:opacity-100 transition" />
           </div>
         </div>
@@ -269,7 +288,7 @@ export default function SiteAdminOverview({
         <div 
           onClick={() => onDrilldown({ filter: '🔴 YoY Decline' })}
           className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/30 shadow-2xs hover:shadow-xs hover:border-rose-400 transition cursor-pointer group"
-          title="Constitutes a decline: Current score dropped below prior year score by > 0.05 on STAR, Amira, or Math benchmarks. % regressed is the proportion of students with ≥1 declining metric."
+          title="5-Tier Scale: Significant Decline (< -10% or < -5 pp), Moderate Decline (-2% to -10% or -2 to -5 pp). Maintained band is ±2% (±2.0 pp)."
         >
           <div className="flex items-center justify-between text-rose-700 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">YoY Decline</span>
@@ -277,7 +296,7 @@ export default function SiteAdminOverview({
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-rose-600">{regressionCount}</div>
           <div className="text-[11px] text-rose-600/80 mt-1 flex items-center justify-between">
-            <span>{regressionPct}% of site (drop &gt; 0.05)</span>
+            <span>Sig: {sigDeclineCount} • Mod: {regressionCount - sigDeclineCount} ({regressionPct}%)</span>
             <ChevronRight className="w-3.5 h-3.5 text-rose-500 opacity-0 group-hover:opacity-100 transition" />
           </div>
         </div>
@@ -321,14 +340,15 @@ export default function SiteAdminOverview({
         <div 
           onClick={() => onDrilldown({ filter: 'Foster/Homeless' })}
           className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs hover:border-amber-300 transition cursor-pointer group"
+          title="Students enrolled in Homeless or Foster Programs (Authoritative from Roster!G:G)"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-amber-600 transition">Foster/Homeless</span>
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-amber-600 transition">Foster / Homeless</span>
             <HeartHandshake className="w-4 h-4 text-amber-600" />
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-amber-700">{fosterHomelessCount}</div>
           <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
-            <span>At-Promise</span>
+            <span>{homelessCount} Homeless • {fosterCount} Foster</span>
             <ChevronRight className="w-3.5 h-3.5 text-amber-500 opacity-0 group-hover:opacity-100 transition" />
           </div>
         </div>

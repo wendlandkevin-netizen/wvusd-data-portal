@@ -149,19 +149,36 @@ export default function StudentModal({
             {student.isFosterHomeless && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-pink-500/20 text-pink-200 border border-pink-400/40">
                 <HeartHandshake className="w-3.5 h-3.5 text-pink-300" />
-                Foster / Homeless Youth Support
+                {student.fosterHomelessType || 'Foster / Homeless Youth Support'}
               </span>
             )}
-            {student.hasYoYDecline && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/30 text-rose-200 border border-rose-400/50 animate-pulse">
+            {student.hasSignificantDecline && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/30 text-rose-200 border border-rose-400/50 animate-pulse" title="Significant drop > 10% (or > 10 pp)">
                 <TrendingDown className="w-3.5 h-3.5 text-rose-300" />
-                Year-over-Year Decline
+                🔴 Significant YoY Decline
               </span>
             )}
-            {!student.hasYoYDecline && student.overallYoYStatus === 'growth' && (
+            {!student.hasSignificantDecline && student.hasYoYDecline && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/25 text-amber-200 border border-amber-400/50" title="Moderate drop between 2% and 10% (or 2-10 pp)">
+                <TrendingDown className="w-3.5 h-3.5 text-amber-300" />
+                🟠 Moderate YoY Decline
+              </span>
+            )}
+            {!student.hasYoYDecline && student.hasStrongGrowth && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/30 text-emerald-200 border border-emerald-400/50" title="Strong gain > 10% (or > 10 pp)">
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-300" />
+                🚀 Strong YoY Growth
+              </span>
+            )}
+            {!student.hasYoYDecline && !student.hasStrongGrowth && student.overallYoYStatus === 'growth' && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/40">
                 <TrendingUp className="w-3.5 h-3.5 text-emerald-300" />
-                Accelerated YoY Growth
+                🟢 Moderate YoY Growth
+              </span>
+            )}
+            {!student.hasYoYDecline && student.overallYoYStatus === 'steady' && student.yoyComparisons.length > 0 && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-500/20 text-slate-200 border border-slate-400/40">
+                🟡 Maintained (±2%)
               </span>
             )}
           </div>
@@ -252,8 +269,11 @@ export default function StudentModal({
                             {comp.family}
                           </span>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                            comp.growth.status === 'growth' ? 'bg-emerald-100 text-emerald-800' :
-                            comp.growth.status === 'decline' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                            comp.growth.tier === 'strong_growth' ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300 font-extrabold' :
+                            comp.growth.tier === 'moderate_growth' ? 'bg-emerald-100 text-emerald-800' :
+                            comp.growth.tier === 'strong_decline' ? 'bg-rose-100 text-rose-800 ring-1 ring-rose-300 font-extrabold' :
+                            comp.growth.tier === 'moderate_decline' ? 'bg-amber-100 text-amber-800' :
+                            'bg-slate-100 text-slate-700'
                           }`}>
                             {comp.growth.badge}
                           </span>

@@ -1,3 +1,5 @@
+import { YOY_THRESHOLDS, LANGUAGE_CLASSIFICATIONS } from '../config/constants.js';
+
 export const PHONICS_SUBTESTS = [
   { id: 'oralBlending', name: 'Oral Blending', match: /oral blending/i, max: 15, benchmark: 12 },
   { id: 'isolatingSounds', name: 'Isolating Sounds', match: /isolating sounds/i, max: 15, benchmark: 12 },
@@ -89,13 +91,19 @@ export function parseMultiAttempt(cellValue) {
 }
 
 /**
- * Compares two scores (previous vs current) to compute Year-over-Year Growth Badge.
- * What constitutes a decline:
- * - A negative delta (curr - prev) exceeding -0.05 (e.g. dropping from 3.4 to 2.9, or 85% to 75%).
- * - The 0.05 threshold acts as a tolerance filter so micro-rounding or test noise does not false-flag.
- * Returns: { status: 'growth'|'steady'|'decline'|'unknown', badge: string, color: string, delta: number|null, percentChange: number|null, description: string }
+ * Compares two scores (previous vs current) to compute Year-over-Year Performance Classification.
+ * Based on the Standard YoY Performance Scale and 5-Tier Executive Scale:
+ * - Neutral Tolerance Band around 0: [-2%, +2%] or [-2.0 pp, +2.0 pp]
+ *   Fluctuations within this band are considered statistical noise or baseline maintenance.
+ * - 5-Tier Classification:
+ *   1. 🚀 Strong Growth: Change > +10% (or > +10.0 pp)
+ *   2. 🟢 Moderate Growth: Change between +2% and +10% (or +2.0 pp to +10.0 pp)
+ *   3. 🟡 Maintained / Stable: Change between -2% and +2% (or -2.0 pp to +2.0 pp)
+ *   4. 🟠 Moderate Decline: Change between -2% and -10% (or -2.0 pp to -10.0 pp)
+ *   5. 🔴 Significant Decline: Change < -10% (or < -10.0 pp)
+ * Returns: { status, tier, badge, color, delta, percentChange, primaryChange, unit, isGrowth, isDecline, isSignificantDecline, prevScore, currScore, description }
  */
-export function computeYoYGrowth(prevValue, currValue) {
+export function computeYoYGrowth(prevValue, currValue, family = '') {
   const prevParsed = typeof prevValue === 'object' && prevValue?.latest !== undefined ? prevValue : parseMultiAttempt(prevValue);
   const currParsed = typeof currValue === 'object' && currValue?.latest !== undefined ? currValue : parseMultiAttempt(currValue);
 
@@ -105,54 +113,124 @@ export function computeYoYGrowth(prevValue, currValue) {
   if (prev === null || curr === null) {
     return {
       status: 'unknown',
+      tier: 'unknown',
       badge: '⚪ Baseline Only',
       color: 'slate',
       delta: null,
       percentChange: null,
+      primaryChange: null,
+      unit: '',
+      isGrowth: false,
+      isDecline: false,
+      isSignificantDecline: false,
       prevScore: prev,
       currScore: curr,
       description: curr !== null ? `Current: ${currParsed.latest}` : 'Insufficient YoY data'
     };
   }
 
+  // Absolute variance
   const delta = Number((curr - prev).toFixed(2));
-  const percentChange = prev !== 0 ? Number((((curr - prev) / Math.abs(prev)) * 100).toFixed(1)) : null;
+  // Relative variance (%)
+  const percentChange = prev !== 0 ? Number((((curr - prev) / Math.abs(prev)) * 100).toFixed(1)) : 0;
 
-  // Threshold: +/- 0.05
-  if (delta > 0.05) {
-    const pctStr = percentChange !== null ? ` (+${percentChange}%)` : '';
+  // Determine if this is a Percentage Metric (e.g. Math Common Assessment 0-100%, fractions)
+  // where variance must be measured in Percentage Points (pp), vs Grade Equivalents (STAR/Amira)
+  const isPercentageMetric = /math|percent|ca|rubric|common assessment/i.test(family) || 
+    (prev > 10 && prev <= 100) || 
+    (curr > 10 && curr <= 100);
+
+  // Primary measure: percentage points (pp) for percentage metrics, relative percent (%) for grade levels
+  const primaryChange = isPercentageMetric ? delta : percentChange;
+  const unit = isPercentageMetric ? 'pp' : '%';
+
+  // 5-Tier Classification Scale based on metric type
+  const thresholds = isPercentageMetric ? YOY_THRESHOLDS.PERCENTAGE_SCORES : YOY_THRESHOLDS.STANDARD_RELATIVE;
+
+  if (primaryChange > thresholds.STRONG_GROWTH) {
     return {
-      status: 'growth',
-      badge: '🟢 Growth',
+      status: 'strong_growth',
+      tier: 'strong_growth',
+      badge: '🚀 Strong Growth',
       color: 'emerald',
       delta,
       percentChange,
+      primaryChange,
+      unit,
+      isGrowth: true,
+      isDecline: false,
+      isSignificantDecline: false,
       prevScore: prev,
       currScore: curr,
-      description: `+${delta} gain${pctStr} (${prevParsed.latest} → ${currParsed.latest})`
+      description: `+${delta}${isPercentageMetric ? ' pp' : ` (+${percentChange}%)`} (${prevParsed.latest} → ${currParsed.latest})`
     };
-  } else if (delta < -0.05) {
-    const pctStr = percentChange !== null ? ` (${percentChange}%)` : '';
+  } else if (primaryChange > thresholds.MODERATE_GROWTH_MIN) {
     return {
-      status: 'decline',
-      badge: '🔴 Decline',
+      status: 'growth',
+      tier: 'moderate_growth',
+      badge: '🟢 Moderate Growth',
+      color: 'emerald',
+      delta,
+      percentChange,
+      primaryChange,
+      unit,
+      isGrowth: true,
+      isDecline: false,
+      isSignificantDecline: false,
+      prevScore: prev,
+      currScore: curr,
+      description: `+${delta}${isPercentageMetric ? ' pp' : ` (+${percentChange}%)`} (${prevParsed.latest} → ${currParsed.latest})`
+    };
+  } else if (primaryChange < thresholds.SIGNIFICANT_DECLINE) {
+    return {
+      status: 'strong_decline',
+      tier: 'strong_decline',
+      badge: '🔴 Significant Decline',
       color: 'rose',
       delta,
       percentChange,
+      primaryChange,
+      unit,
+      isGrowth: false,
+      isDecline: true,
+      isSignificantDecline: true,
       prevScore: prev,
       currScore: curr,
-      description: `${delta} decline${pctStr} (${prevParsed.latest} → ${currParsed.latest})`
+      description: `${delta}${isPercentageMetric ? ' pp' : ` (${percentChange}%)`} (${prevParsed.latest} → ${currParsed.latest})`
+    };
+  } else if (primaryChange < thresholds.MODERATE_DECLINE_MAX) {
+    return {
+      status: 'decline',
+      tier: 'moderate_decline',
+      badge: '🟠 Moderate Decline',
+      color: 'amber',
+      delta,
+      percentChange,
+      primaryChange,
+      unit,
+      isGrowth: false,
+      isDecline: true,
+      isSignificantDecline: false,
+      prevScore: prev,
+      currScore: curr,
+      description: `${delta}${isPercentageMetric ? ' pp' : ` (${percentChange}%)`} (${prevParsed.latest} → ${currParsed.latest})`
     };
   } else {
     return {
       status: 'steady',
-      badge: '🟡 Steady',
-      color: 'amber',
-      delta: 0,
-      percentChange: 0,
+      tier: 'maintained',
+      badge: '🟡 Maintained',
+      color: 'slate',
+      delta,
+      percentChange,
+      primaryChange,
+      unit,
+      isGrowth: false,
+      isDecline: false,
+      isSignificantDecline: false,
       prevScore: prev,
       currScore: curr,
-      description: `Maintained (${prevParsed.latest} → ${currParsed.latest})`
+      description: `Maintained (${prevParsed.latest} → ${currParsed.latest}) [${delta >= 0 ? `+${delta}` : delta}${isPercentageMetric ? ' pp' : '%'}]`
     };
   }
 }
@@ -262,23 +340,23 @@ export function parseStudentRecord(raw) {
   const lowerEl = elRaw.toLowerCase();
 
   let elType = 'EO';
-  let elLabel = 'English Only';
+  let elLabel = LANGUAGE_CLASSIFICATIONS.EO.label;
 
   if (lowerEl.includes('redesignated') || lowerEl === 'rfep') {
     elType = 'RFEP';
-    elLabel = 'Redesignated (RFEP)';
+    elLabel = LANGUAGE_CLASSIFICATIONS.RFEP.label;
   } else if (lowerEl.includes('initially fluent') || lowerEl === 'ifep') {
     elType = 'IFEP';
-    elLabel = 'Initially Fluent (IFEP)';
+    elLabel = LANGUAGE_CLASSIFICATIONS.IFEP.label;
   } else if (lowerEl === 'lep' || lowerEl.includes('limited') || lowerEl.includes('learner') || lowerEl === 'el') {
     elType = 'EL';
-    elLabel = 'Active EL (LEP)';
+    elLabel = LANGUAGE_CLASSIFICATIONS.EL.label;
   } else if (lowerEl.includes('determined') || lowerEl === 'tbd') {
     elType = 'TBD';
     elLabel = 'To Be Determined (TBD)';
   } else if (lowerEl.includes('english only') || lowerEl === 'eo') {
     elType = 'EO';
-    elLabel = 'English Only';
+    elLabel = LANGUAGE_CLASSIFICATIONS.EO.label;
   } else if (elRaw) {
     elType = 'EO';
     elLabel = elRaw;
@@ -306,10 +384,31 @@ export function parseStudentRecord(raw) {
     p504 === 'Y' || p504 === 'Yes' || p504 === '504' || p504 === true || p504 === 'true' || p504 === 'T'
   );
 
-  const fh = raw.flags?.fosterHomeless || raw['Foster/Homeless'];
+  // Authoritative Foster / Homeless Youth Program (Roster!G:G)
+  // Live values in Roster!G:G are: 'Homeless Program', 'Foster Program', or blank
+  const fhRaw = String(
+    raw.flags?.fosterHomeless ||
+    raw['Foster/Homeless'] ||
+    raw.fosterHomeless ||
+    raw['Homeless/Foster Program'] ||
+    raw['Homeless Program'] ||
+    raw['Foster Program'] ||
+    ''
+  ).trim();
+  const lowerFh = fhRaw.toLowerCase();
+  const isFoster = lowerFh.includes('foster');
+  const isHomeless = lowerFh.includes('homeless');
   const isFosterHomeless = Boolean(
-    fh === 'Y' || fh === 'Yes' || fh === true || fh === 'true' || fh === 'T'
+    isFoster ||
+    isHomeless ||
+    lowerFh === 'y' ||
+    lowerFh === 'yes' ||
+    lowerFh === 'true' ||
+    lowerFh === 't'
   );
+  const fosterHomelessType = isFoster
+    ? 'Foster Program'
+    : (isHomeless ? 'Homeless Program' : (isFosterHomeless ? 'Foster / Homeless' : null));
 
   // Group assessments across all matched tabs (e.g. "3rd ELA", "3rd Math", etc.)
   const rawAssessmentsByTab = raw.assessmentsByTab || {};
@@ -386,7 +485,7 @@ export function parseStudentRecord(raw) {
     if (sortedYears.length >= 2) {
       const prevCol = years[sortedYears[0]];
       const currCol = years[sortedYears[sortedYears.length - 1]];
-      const growth = computeYoYGrowth(prevCol.parsed, currCol.parsed);
+      const growth = computeYoYGrowth(prevCol.parsed, currCol.parsed, family);
       if (growth.status !== 'unknown') {
         yoyComparisons.push({
           family,
@@ -400,10 +499,24 @@ export function parseStudentRecord(raw) {
     }
   }
 
-  const declines = yoyComparisons.filter(c => c.growth.status === 'decline').length;
-  const growths = yoyComparisons.filter(c => c.growth.status === 'growth').length;
-  const hasYoYDecline = declines >= 1;
-  const overallYoYStatus = declines > growths ? 'decline' : growths > 0 ? 'growth' : (yoyComparisons.length > 0 ? 'steady' : 'unknown');
+  const significantDeclines = yoyComparisons.filter(c => c.growth.isSignificantDecline).length;
+  const totalDeclines = yoyComparisons.filter(c => c.growth.isDecline).length;
+  const totalGrowths = yoyComparisons.filter(c => c.growth.isGrowth).length;
+  const strongGrowths = yoyComparisons.filter(c => c.growth.tier === 'strong_growth').length;
+
+  const hasYoYDecline = totalDeclines >= 1;
+  const hasSignificantDecline = significantDeclines >= 1;
+  const hasStrongGrowth = strongGrowths >= 1;
+
+  // Overall YoY trajectory:
+  let overallYoYStatus = 'steady';
+  if (significantDeclines > 0 || totalDeclines > totalGrowths) {
+    overallYoYStatus = 'decline';
+  } else if (totalGrowths > totalDeclines) {
+    overallYoYStatus = 'growth';
+  } else if (yoyComparisons.length === 0) {
+    overallYoYStatus = 'unknown';
+  }
 
   // Detect Headline Metrics for the Student Card (from whichever ELA & Math tabs matched!)
   const findFamilyLatest = (famPattern) => {
@@ -486,11 +599,16 @@ export function parseStudentRecord(raw) {
     spedType,
     is504,
     isFosterHomeless,
+    isFoster,
+    isHomeless,
+    fosterHomelessType,
     matchedTabs,
     assessmentsByTab: parsedTabs,
     allParsedColumns,
     yoyComparisons,
     hasYoYDecline,
+    hasSignificantDecline,
+    hasStrongGrowth,
     overallYoYStatus,
     headline: {
       amira: amiraCol,
@@ -538,7 +656,7 @@ export function generateSSTPrompt(student) {
   else if (student.isIFEP) programs.push(`Initially Fluent English Proficient (IFEP)`);
   if (student.isSpEd) programs.push(`Special Education (${student.spedType || 'IEP'})`);
   if (student.is504) programs.push(`Section 504 Plan`);
-  if (student.isFosterHomeless) programs.push(`Foster / Homeless Youth Support`);
+  if (student.isFosterHomeless) programs.push(student.fosterHomelessType || `Foster / Homeless Youth Support`);
   const programStr = programs.length > 0 ? programs.join(', ') : 'General Education';
 
   return `WVUSD SST & MULTI-TIERED INTERVENTION ANALYSIS PROMPT

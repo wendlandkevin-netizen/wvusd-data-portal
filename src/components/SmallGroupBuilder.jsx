@@ -201,17 +201,17 @@ Generated: ${new Date().toLocaleDateString()}
 🔴 TIER 3: INTENSIVE NEEDS (<60%) [Count: ${groups.intensive.length}]
 Instructional Focus: ${getFocusRoutine('intensive')}
 Students:
-${groups.intensive.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.elType && s.elType !== 'EO' ? `[${s.elType}]` : ''} ${s.isSpEd ? '[IEP]' : ''}`).join('\n') || 'None'}
+${groups.intensive.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.elType && s.elType !== 'EO' ? `[${s.elType}]` : ''} ${s.isSpEd ? '[IEP]' : ''} ${s.isFosterHomeless ? `[${s.fosterHomelessType || 'Foster/HL'}]` : ''}`).join('\n') || 'None'}
 
 🟡 TIER 2: STRATEGIC SUPPORT (60-79%) [Count: ${groups.strategic.length}]
 Instructional Focus: ${getFocusRoutine('strategic')}
 Students:
-${groups.strategic.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.elType && s.elType !== 'EO' ? `[${s.elType}]` : ''} ${s.isSpEd ? '[IEP]' : ''}`).join('\n') || 'None'}
+${groups.strategic.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.elType && s.elType !== 'EO' ? `[${s.elType}]` : ''} ${s.isSpEd ? '[IEP]' : ''} ${s.isFosterHomeless ? `[${s.fosterHomelessType || 'Foster/HL'}]` : ''}`).join('\n') || 'None'}
 
 🟢 TIER 1: BENCHMARK (80%+) [Count: ${groups.benchmark.length}]
 Instructional Focus: ${getFocusRoutine('benchmark')}
 Students:
-${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.elType && s.elType !== 'EO' ? `[${s.elType}]` : ''}`).join('\n') || 'None'}
+${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.elType && s.elType !== 'EO' ? `[${s.elType}]` : ''} ${s.isSpEd ? '[IEP]' : ''} ${s.isFosterHomeless ? `[${s.fosterHomelessType || 'Foster/HL'}]` : ''}`).join('\n') || 'None'}
 `;
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -420,11 +420,20 @@ ${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${
                           504
                         </span>
                       )}
-                      {s.hasYoYDecline && (
-                        <span className="text-[9px] font-bold bg-rose-100 text-rose-800 px-1.5 py-0.2 rounded">
-                          YoY Decline
+                      {s.isFosterHomeless && (
+                        <span className="text-[9px] font-bold bg-pink-100 text-pink-800 px-1.5 py-0.2 rounded">
+                          {s.isFoster ? 'Foster' : (s.isHomeless ? 'Homeless' : 'Foster/HL')}
                         </span>
                       )}
+                      {s.hasSignificantDecline ? (
+                        <span className="text-[9px] font-bold bg-rose-100 text-rose-800 px-1.5 py-0.2 rounded ring-1 ring-rose-300">
+                          🔴 Sig. Decline
+                        </span>
+                      ) : s.hasYoYDecline ? (
+                        <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded">
+                          🟠 Mod. Decline
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 ))
@@ -519,6 +528,11 @@ ${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${
                           504
                         </span>
                       )}
+                      {s.isFosterHomeless && (
+                        <span className="text-[9px] font-bold bg-pink-100 text-pink-800 px-1.5 py-0.2 rounded">
+                          {s.isFoster ? 'Foster' : (s.isHomeless ? 'Homeless' : 'Foster/HL')}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))
@@ -595,6 +609,11 @@ ${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${
                       {s.isIFEP && (
                         <span className="text-[9px] font-bold bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded">
                           IFEP
+                        </span>
+                      )}
+                      {s.isFosterHomeless && (
+                        <span className="text-[9px] font-bold bg-pink-100 text-pink-800 px-1.5 py-0.2 rounded">
+                          {s.isFoster ? 'Foster' : (s.isHomeless ? 'Homeless' : 'Foster/HL')}
                         </span>
                       )}
                       <span className="text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded">
