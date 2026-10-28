@@ -1,7 +1,7 @@
 // src/config/constants.js
 
 // 1. Paste your deployed Google Apps Script Web App URL here:
-export const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxci98uKhEcneEVo3U05o7-Mesm3HLmXC-tz4Udh4aGvNs9S3d4y8YEq-RWwfOHRrjz/exec";
+export const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxEkGg1GzA435GHWwMHSSSAp1-5BqNYLyiXIyR91bVudqP4DKVLIGuVi7GAABME1x5t/exec";
 
 // 2. Paste your Google Cloud OAuth Web Client ID here (for 1-Click Sign-In on GitHub Pages):
 export const GOOGLE_CLIENT_ID = "243489966839-kcopbaj692oat1p2hoq5lrcddq9n4k17.apps.googleusercontent.com";

@@ -5,17 +5,17 @@ import {
   Sparkles, 
   Copy, 
   Check, 
-  Calendar, 
   TrendingUp, 
   TrendingDown, 
   BookOpen, 
   GraduationCap, 
   Languages, 
   HeartHandshake, 
-  FileText,
-  AlertTriangle,
+  FileText, 
   Award,
-  ChevronRight
+  ChevronRight,
+  Calculator,
+  Layers
 } from 'lucide-react';
 import { getSiteLogo, DISTRICT_LOGO } from '../config/constants';
 import { generateSSTPrompt } from '../utils/dataParser';
@@ -26,7 +26,14 @@ export default function StudentModal({
   onClose
 }) {
   const [copiedPrompt, setCopiedPrompt] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'phonics' | 'writing' | 'sst'
+  const [activeTab, setActiveTab] = useState('overview');
+  const [prevStudentId, setPrevStudentId] = useState(student?.id);
+
+  // Reset tab to overview when a new student is selected
+  if (student?.id !== prevStudentId) {
+    setPrevStudentId(student?.id);
+    setActiveTab('overview');
+  }
 
   // Close on Escape key
   useEffect(() => {
@@ -47,6 +54,7 @@ export default function StudentModal({
 
   const siteLogo = getSiteLogo(student.school);
   const sstPrompt = generateSSTPrompt(student);
+  const matchedTabs = student.matchedTabs || Object.keys(student.assessmentsByTab || {});
 
   const handleCopyPrompt = () => {
     navigator.clipboard.writeText(sstPrompt);
@@ -84,7 +92,7 @@ export default function StudentModal({
                     ID #{student.id}
                   </span>
                   <span className="text-xs text-slate-300">
-                    Grade {student.grade} • Classroom: {student.teacher}
+                    Grade {student.gradeStr || student.grade} • Classroom: {student.teacher}
                   </span>
                 </div>
                 <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-1">
@@ -135,7 +143,7 @@ export default function StudentModal({
             {student.hasYoYDecline && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/30 text-rose-200 border border-rose-400/50 animate-pulse">
                 <TrendingDown className="w-3.5 h-3.5 text-rose-300" />
-                Flagged: Year-over-Year Decline
+                Year-over-Year Decline
               </span>
             )}
             {!student.hasYoYDecline && student.overallYoYStatus === 'growth' && (
@@ -147,9 +155,11 @@ export default function StudentModal({
           </div>
         </div>
 
-        {/* Tab Navigation */}
+        {/* Tab Navigation: Overview, Matched Sheet Tabs, and SST Prompt */}
         <div className="bg-slate-50 border-b border-slate-200 px-5 sm:px-6 flex items-center justify-between overflow-x-auto shrink-0">
           <div className="flex items-center gap-2 py-2">
+            
+            {/* 1. Overview & YoY Trajectory Tab */}
             <button
               onClick={() => setActiveTab('overview')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
@@ -159,33 +169,33 @@ export default function StudentModal({
               }`}
             >
               <Award className="w-3.5 h-3.5" />
-              YoY Growth Trajectory
+              Overview & YoY Growth
             </button>
 
-            <button
-              onClick={() => setActiveTab('phonics')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                activeTab === 'phonics'
-                  ? 'bg-white text-indigo-700 shadow-2xs border border-slate-200'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
-              7 Phonics Micro-Skills
-            </button>
+            {/* 2. Dynamically rendered tabs for each matched Google Sheet tab */}
+            {matchedTabs.map((tab) => {
+              const isTabActive = activeTab === tab;
+              const isMath = /math/i.test(tab);
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                    isTabActive
+                      ? 'bg-white text-indigo-700 shadow-2xs border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {isMath ? <Calculator className="w-3.5 h-3.5 text-indigo-600" /> : <BookOpen className="w-3.5 h-3.5 text-blue-600" />}
+                  <span>{tab}</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200/80 text-slate-700 font-bold">
+                    {student.assessmentsByTab[tab]?.length || 0}
+                  </span>
+                </button>
+              );
+            })}
 
-            <button
-              onClick={() => setActiveTab('writing')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                activeTab === 'writing'
-                  ? 'bg-white text-emerald-700 shadow-2xs border border-slate-200'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5 text-emerald-600" />
-              Writing Rubrics (6 Areas)
-            </button>
-
+            {/* 3. SST NotebookLM Prompt Tab */}
             <button
               onClick={() => setActiveTab('sst')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
@@ -200,194 +210,131 @@ export default function StudentModal({
           </div>
 
           <div className="hidden sm:block text-[11px] text-slate-400">
-            Illuminate Assessment Records
+            Authoritative Roster Data
           </div>
         </div>
 
         {/* Modal Body (Scrollable) */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-6">
           
-          {/* TAB 1: OVERVIEW & YoY COMPARISONS */}
+          {/* TAB 1: OVERVIEW & MULTI-YEAR YoY COMPARISONS */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
               
               <div>
                 <h4 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-blue-600" />
-                  Year-over-Year Comparative Growth (Multi-Attempt History)
+                  Multi-Year Comparative Growth (Matched Across Live Years)
                 </h4>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  
-                  {/* Amira ARM YoY Card */}
-                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700">Amira ARM Fluency</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        student.amira.growth.status === 'growth' ? 'bg-emerald-100 text-emerald-800' :
-                        student.amira.growth.status === 'decline' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {student.amira.growth.badge}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-center bg-white p-2.5 rounded-xl border border-slate-200/80">
-                      <div>
-                        <div className="text-[10px] text-slate-400 font-semibold">25-26 Tri 3</div>
-                        <div className="text-base font-extrabold text-slate-800">
-                          {student.amira.prev.latest || 'N/A'}
-                        </div>
-                      </div>
-                      <div className="border-l border-slate-100 pl-2">
-                        <div className="text-[10px] text-slate-400 font-semibold">26-27 Baseline</div>
-                        <div className="text-base font-extrabold text-blue-600">
-                          {student.amira.curr.latest || 'N/A'}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Multi-Attempt History Pills */}
-                    <div>
-                      <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                        Attempt Progression Trail:
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        {student.amira.curr.history.map((att, idx) => (
-                          <React.Fragment key={`amira-att-${idx}`}>
-                            <span className="px-2 py-0.5 rounded bg-white text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
-                              {att}
-                            </span>
-                            {idx < student.amira.curr.history.length - 1 && (
-                              <ChevronRight className="w-3 h-3 text-slate-400" />
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-slate-500">
-                      {student.amira.growth.description}
-                    </div>
+                {student.yoyComparisons.length === 0 ? (
+                  <div className="p-6 rounded-2xl border border-slate-200 bg-slate-50 text-center text-xs text-slate-500">
+                    Baseline assessment data currently recorded for this student. No multi-year pairing detected yet.
                   </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {student.yoyComparisons.map((comp) => (
+                      <div key={comp.family} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800 truncate pr-1">
+                            {comp.family}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                            comp.growth.status === 'growth' ? 'bg-emerald-100 text-emerald-800' :
+                            comp.growth.status === 'decline' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {comp.growth.badge}
+                          </span>
+                        </div>
 
-                  {/* STAR Reading YoY Card */}
-                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700">STAR Reading IRL</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        student.star.growth.status === 'growth' ? 'bg-emerald-100 text-emerald-800' :
-                        student.star.growth.status === 'decline' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {student.star.growth.badge}
-                      </span>
-                    </div>
+                        <div className="grid grid-cols-2 gap-2 text-center bg-white p-2.5 rounded-xl border border-slate-200/80">
+                          <div>
+                            <div className="text-[10px] text-slate-400 font-semibold">{comp.prevYear}</div>
+                            <div className="text-base font-extrabold text-slate-800 truncate">
+                              {comp.prev.parsed.latest || 'N/A'}
+                            </div>
+                          </div>
+                          <div className="border-l border-slate-100 pl-2">
+                            <div className="text-[10px] text-slate-400 font-semibold">{comp.currYear}</div>
+                            <div className="text-base font-extrabold text-blue-600 truncate">
+                              {comp.curr.parsed.latest || 'N/A'}
+                            </div>
+                          </div>
+                        </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-center bg-white p-2.5 rounded-xl border border-slate-200/80">
-                      <div>
-                        <div className="text-[10px] text-slate-400 font-semibold">25-26 Spring</div>
-                        <div className="text-base font-extrabold text-slate-800">
-                          {student.star.prev.latest || 'N/A'}
+                        {/* Multi-Attempt Progression Trail */}
+                        {comp.curr.parsed.history.length > 1 && (
+                          <div>
+                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                              Current Attempt Trail:
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1 font-mono text-[11px]">
+                              {comp.curr.parsed.history.map((att, idx) => (
+                                <React.Fragment key={idx}>
+                                  <span className="px-2 py-0.5 rounded bg-white text-slate-700 font-bold border border-slate-200">
+                                    {att}
+                                  </span>
+                                  {idx < comp.curr.parsed.history.length - 1 && (
+                                    <ChevronRight className="w-3 h-3 text-slate-400" />
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="text-[11px] text-slate-500">
+                          {comp.growth.description}
                         </div>
                       </div>
-                      <div className="border-l border-slate-100 pl-2">
-                        <div className="text-[10px] text-slate-400 font-semibold">26-27 Fall</div>
-                        <div className="text-base font-extrabold text-blue-600">
-                          {student.star.curr.latest || 'N/A'}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Multi-Attempt History Pills */}
-                    <div>
-                      <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                        Attempt Progression Trail:
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        {student.star.curr.history.map((att, idx) => (
-                          <React.Fragment key={`star-att-${idx}`}>
-                            <span className="px-2 py-0.5 rounded bg-white text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
-                              {att}
-                            </span>
-                            {idx < student.star.curr.history.length - 1 && (
-                              <ChevronRight className="w-3 h-3 text-slate-400" />
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-slate-500">
-                      {student.star.growth.description}
-                    </div>
+                    ))}
                   </div>
+                )}
+              </div>
 
-                  {/* WVUSD ORR YoY Card */}
-                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700">WVUSD Oral Reading Record</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        student.orr.growth.status === 'growth' ? 'bg-emerald-100 text-emerald-800' :
-                        student.orr.growth.status === 'decline' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {student.orr.growth.badge}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-center bg-white p-2.5 rounded-xl border border-slate-200/80">
+              {/* Matched Sheet Tabs Summary Card */}
+              <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-blue-600" />
+                    Matched Sheet Tabs for Student ID #{student.id}
+                  </h4>
+                  <span className="text-xs text-slate-400">
+                    Grade {student.gradeStr || student.grade} Roster
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {matchedTabs.map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition text-left cursor-pointer"
+                    >
+                      {/math/i.test(tab) ? <Calculator className="w-4 h-4 text-indigo-600" /> : <BookOpen className="w-4 h-4 text-blue-600" />}
                       <div>
-                        <div className="text-[10px] text-slate-400 font-semibold">25-26 Tri 3</div>
-                        <div className="text-base font-extrabold text-slate-800">
-                          {student.orr.prev.latest || 'N/A'}
+                        <div className="text-xs font-bold text-slate-900">{tab}</div>
+                        <div className="text-[10px] text-slate-500">
+                          {student.assessmentsByTab[tab]?.length || 0} columns assessed →
                         </div>
                       </div>
-                      <div className="border-l border-slate-100 pl-2">
-                        <div className="text-[10px] text-slate-400 font-semibold">26-27 Tri 1</div>
-                        <div className="text-base font-extrabold text-blue-600">
-                          {student.orr.curr.latest || 'N/A'}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Multi-Attempt History Pills */}
-                    <div>
-                      <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                        Attempt Progression Trail:
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        {student.orr.curr.history.map((att, idx) => (
-                          <React.Fragment key={`orr-att-${idx}`}>
-                            <span className="px-2 py-0.5 rounded bg-white text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
-                              {att}
-                            </span>
-                            {idx < student.orr.curr.history.length - 1 && (
-                              <ChevronRight className="w-3 h-3 text-slate-400" />
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-slate-500">
-                      {student.orr.growth.description}
-                    </div>
-                  </div>
-
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Quick Summary Snapshot */}
-              <div className="bg-blue-50/60 rounded-2xl p-4 border border-blue-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              {/* Quick Action to SST Generator */}
+              <div className="bg-purple-50/70 rounded-2xl p-4 border border-purple-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                  <div className="text-xs font-bold text-blue-900">
-                    SST NotebookLM Intervention Ready
+                  <div className="text-xs font-bold text-purple-900">
+                    SST NotebookLM Intervention Analysis Ready
                   </div>
-                  <p className="text-xs text-blue-700 mt-0.5 max-w-xl">
-                    Student data has been normalized across Illuminate multi-value records. Use the 1-click generator to draft a complete intervention plan.
+                  <p className="text-xs text-purple-700 mt-0.5 max-w-xl">
+                    Student metrics across all tabs and multi-year trajectories are formatted for instant AI synthesis.
                   </p>
                 </div>
                 <button
                   onClick={() => setActiveTab('sst')}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 shrink-0"
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 shrink-0"
                 >
                   <Sparkles className="w-4 h-4 text-amber-300" />
                   View SST Prompt
@@ -397,173 +344,63 @@ export default function StudentModal({
             </div>
           )}
 
-          {/* TAB 2: 7 PHONICS MICRO-SKILLS */}
-          {activeTab === 'phonics' && (
+          {/* DYNAMIC TABS FOR EACH MATCHED SHEET TAB (e.g. 4th ELA, 4th Math, etc.) */}
+          {matchedTabs.includes(activeTab) && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                 <div>
-                  <h4 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">
-                    Foundational Phonics Subtests Breakdown
+                  <h4 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                    {/math/i.test(activeTab) ? <Calculator className="w-5 h-5 text-indigo-600" /> : <BookOpen className="w-5 h-5 text-blue-600" />}
+                    {activeTab} Assessment Records
                   </h4>
-                  <p className="text-xs text-slate-500">
-                    Comprehensive rubric scores across all 7 foundational literacy micro-skills.
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Showing all {student.assessmentsByTab[activeTab]?.length || 0} assessment columns from the live Google Sheet for ID #{student.id}.
                   </p>
                 </div>
-                <div className="flex items-center gap-3 text-[11px]">
-                  <span className="flex items-center gap-1 text-emerald-700 font-semibold">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    Benchmark (80%+)
-                  </span>
-                  <span className="flex items-center gap-1 text-amber-700 font-semibold">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                    Strategic (60-79%)
-                  </span>
-                  <span className="flex items-center gap-1 text-rose-700 font-semibold">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                    Intensive (&lt;60%)
-                  </span>
-                </div>
               </div>
 
-              <div className="space-y-3">
-                {student.phonics.map((p) => {
-                  const barColor = p.tierNum === 1 ? 'bg-emerald-500' : p.tierNum === 2 ? 'bg-amber-500' : 'bg-rose-500';
-                  const badgeColor = p.tierNum === 1 ? 'bg-emerald-100 text-emerald-800' : p.tierNum === 2 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800';
-
-                  return (
-                    <div key={p.id} className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900">{p.name}</span>
-                          <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {p.testedAt}
-                          </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {student.assessmentsByTab[activeTab]?.map((col, idx) => (
+                  <div
+                    key={`${col.header}-${idx}`}
+                    className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-2 hover:border-blue-300 transition"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 pr-1">
+                        <div className="text-xs font-bold text-slate-900 truncate" title={col.header}>
+                          {col.baseName}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-700">
-                            {p.score !== null ? `${p.score} / ${p.max}` : 'Not Assessed'}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${badgeColor}`}>
-                            {p.tier} ({p.percent}%)
-                          </span>
+                        <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                          {col.year && (
+                            <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-bold">
+                              {col.year}
+                            </span>
+                          )}
+                          <span className="truncate">{col.family}</span>
                         </div>
                       </div>
 
-                      {/* Progress Bar */}
-                      <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${barColor} rounded-full transition-all duration-500`}
-                          style={{ width: `${Math.min(100, p.percent)}%` }}
-                        />
+                      <div className="text-right shrink-0">
+                        <span className="text-xs font-extrabold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
+                          {col.parsed.latest}
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* Multi-Attempt Progression Trail */}
+                    {col.parsed.history.length > 1 && (
+                      <div className="text-[10px] text-slate-500 font-mono bg-slate-50 px-2 py-1 rounded">
+                        <span className="text-slate-400 font-sans text-[9px] uppercase font-bold mr-1">Progression:</span>
+                        {col.parsed.history.join(' → ')}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
-          {/* TAB 3: WRITING COMMON ASSESSMENT RUBRICS */}
-          {activeTab === 'writing' && (
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">
-                  Writing Common Assessment Rubric Scores
-                </h4>
-                <p className="text-xs text-slate-500">
-                  Evaluated on standard 4-point District rubric (1: Below Standard, 2: Approaching, 3: Meets Benchmark, 4: Exceeds).
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                
-                {/* Narrative Genre */}
-                <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
-                  <div className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center justify-between">
-                    <span>Narrative Writing</span>
-                    <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded">Rubric /4.0</span>
-                  </div>
-                  {student.writing.filter(w => w.genre === 'Narrative').map(w => (
-                    <div key={w.id} className="bg-white p-3 rounded-xl border border-slate-200/80">
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="font-semibold text-slate-700">{w.name}</span>
-                        <span className={`font-black text-xs px-2 py-0.5 rounded ${
-                          w.score >= 3 ? 'bg-emerald-100 text-emerald-800' :
-                          w.score === 2 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
-                        }`}>
-                          {w.score ? `${w.score} / 4.0` : '—'}
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${w.score >= 3 ? 'bg-emerald-500' : w.score === 2 ? 'bg-amber-500' : 'bg-rose-500'}`}
-                          style={{ width: `${((w.score || 0) / 4) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Opinion Genre */}
-                <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
-                  <div className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center justify-between">
-                    <span>Opinion Writing</span>
-                    <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Rubric /4.0</span>
-                  </div>
-                  {student.writing.filter(w => w.genre === 'Opinion').map(w => (
-                    <div key={w.id} className="bg-white p-3 rounded-xl border border-slate-200/80">
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="font-semibold text-slate-700">{w.name}</span>
-                        <span className={`font-black text-xs px-2 py-0.5 rounded ${
-                          w.score >= 3 ? 'bg-emerald-100 text-emerald-800' :
-                          w.score === 2 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
-                        }`}>
-                          {w.score ? `${w.score} / 4.0` : '—'}
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${w.score >= 3 ? 'bg-emerald-500' : w.score === 2 ? 'bg-amber-500' : 'bg-rose-500'}`}
-                          style={{ width: `${((w.score || 0) / 4) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Informational Genre */}
-                <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
-                  <div className="text-xs font-bold text-emerald-900 uppercase tracking-wider flex items-center justify-between">
-                    <span>Informational Writing</span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">Rubric /4.0</span>
-                  </div>
-                  {student.writing.filter(w => w.genre === 'Informational').map(w => (
-                    <div key={w.id} className="bg-white p-3 rounded-xl border border-slate-200/80">
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="font-semibold text-slate-700">{w.name}</span>
-                        <span className={`font-black text-xs px-2 py-0.5 rounded ${
-                          w.score >= 3 ? 'bg-emerald-100 text-emerald-800' :
-                          w.score === 2 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
-                        }`}>
-                          {w.score ? `${w.score} / 4.0` : '—'}
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${w.score >= 3 ? 'bg-emerald-500' : w.score === 2 ? 'bg-amber-500' : 'bg-rose-500'}`}
-                          style={{ width: `${((w.score || 0) / 4) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: SST NOTEBOOKLM PROMPT GENERATOR */}
+          {/* TAB: SST NOTEBOOKLM PROMPT GENERATOR */}
           {activeTab === 'sst' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-purple-50 p-4 rounded-2xl border border-purple-200">
@@ -595,24 +432,9 @@ export default function StudentModal({
                 </button>
               </div>
 
-              {/* Lowest Literacy Deficits Alert */}
-              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl">
-                <div className="text-xs font-bold text-rose-900 mb-1 flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-rose-600" />
-                  Identified Priority Literacy Micro-Skill Gaps:
-                </div>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {student.lowestPhonics.slice(0, 3).map((lp) => (
-                    <span key={lp.id} className="bg-white border border-rose-200 text-rose-800 px-2.5 py-1 rounded-lg font-medium">
-                      <strong>{lp.name}:</strong> {lp.score !== null ? `${lp.score}/${lp.max} (${lp.percent}%)` : 'Pending'} [{lp.tier}]
-                    </span>
-                  ))}
-                </div>
-              </div>
-
               {/* Prompt Text Preview Box */}
               <div className="relative">
-                <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl text-xs font-mono leading-relaxed overflow-x-auto border border-slate-800 max-h-80 whitespace-pre-wrap">
+                <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl text-xs font-mono leading-relaxed overflow-x-auto border border-slate-800 max-h-96 whitespace-pre-wrap">
                   {sstPrompt}
                 </pre>
                 <button

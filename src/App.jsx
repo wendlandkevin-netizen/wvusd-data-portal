@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import HeaderBar from './components/HeaderBar';
 import SiteAdminOverview from './components/SiteAdminOverview';
 import TeacherDashboard from './components/TeacherDashboard';
@@ -10,20 +10,20 @@ import {
   GOOGLE_CLIENT_ID, 
   SUPER_ADMIN_EMAIL, 
   DISTRICT_LOGO, 
-  isValidStaffEmail 
+  isValidStaffEmail,
+  GAS_WEB_APP_URL
 } from './config/constants';
 import { parseStudentRecord } from './utils/dataParser';
-import { 
-  RAW_SAMPLE_STUDENTS, 
-  WVUSD_ELEMENTARY_SCHOOLS, 
-  TEACHERS_BY_SCHOOL_AND_GRADE 
-} from './data/sampleData';
 
 import { 
   ShieldAlert, 
   ShieldCheck, 
   Lock, 
-  AlertOctagon
+  AlertOctagon,
+  RefreshCw,
+  ExternalLink,
+  Loader2,
+  Database
 } from 'lucide-react';
 
 // Decode Google JWT token safely in browser
@@ -45,12 +45,11 @@ function decodeJwt(token) {
 }
 
 export default function App() {
-  // Initialize user lazily from sessionStorage to avoid render flicker
+  // Authentication & Session State
   const [user, setUser] = useState(() => {
     try {
-      const cachedToken = sessionStorage.getItem('wvusd_staff_token');
       const cachedUser = sessionStorage.getItem('wvusd_staff_user');
-      if (cachedToken && cachedUser) {
+      if (cachedUser) {
         const parsed = JSON.parse(cachedUser);
         if (isValidStaffEmail(parsed?.email)) {
           return parsed;
@@ -65,10 +64,17 @@ export default function App() {
   const [authError, setAuthError] = useState(null); // null | 'domain_blocked' | 'invalid_token'
   const [blockedEmail, setBlockedEmail] = useState('');
 
+  // Live API Fetching State
+  const [students, setStudents] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
+  const [fetchUrl, setFetchUrl] = useState('');
+
   // App Navigation & Drilldown State
   const [activeView, setActiveView] = useState('overview'); // 'overview' | 'teacher' | 'small-groups'
-  const [selectedSchool, setSelectedSchool] = useState('Collegewood Elementary');
-  const [selectedGrade, setSelectedGrade] = useState(3); // Default to Grade 3 focal
+  const [selectedSchool, setSelectedSchool] = useState('ALL');
+  const [selectedGrade, setSelectedGrade] = useState('ALL');
   const [selectedTeacher, setSelectedTeacher] = useState('ALL');
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,40 +86,66 @@ export default function App() {
   // Current Role Preview (Super Admin can switch role perspective)
   const [currentRole, setCurrentRole] = useState(() => user?.role || 'SUPER ADMIN');
 
-  // Parse Raw Student Records into Rich Format
-  const students = useMemo(() => {
-    return RAW_SAMPLE_STUDENTS.map(parseStudentRecord);
+  // Fetch live data from Google Apps Script Web App
+  // Plain fetch with redirect: 'follow' and NO custom headers (prevents CORS preflight failures on 302 redirects)
+  const fetchLiveData = useCallback(async (tokenOrEmail) => {
+    setIsLoading(true);
+    setFetchError(null);
+
+    let url = GAS_WEB_APP_URL;
+    if (tokenOrEmail && typeof tokenOrEmail === 'string' && tokenOrEmail.includes('@')) {
+      url += `?test_email=${encodeURIComponent(tokenOrEmail)}`;
+    } else if (tokenOrEmail && typeof tokenOrEmail === 'string') {
+      url += `?id_token=${encodeURIComponent(tokenOrEmail)}`;
+    } else {
+      url += `?test_email=${encodeURIComponent(SUPER_ADMIN_EMAIL)}`;
+    }
+
+    setFetchUrl(url);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        redirect: 'follow'
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      if (!data.students || !Array.isArray(data.students)) {
+        throw new Error("Invalid response format: 'students' array missing from Google Apps Script.");
+      }
+
+      // Parse students using dynamic multi-year & multi-tab parser
+      const parsedStudents = data.students.map(parseStudentRecord);
+      setStudents(parsedStudents);
+      setMeta(data.meta || {});
+
+      // Automatically set default school if assigned to specific site
+      if (data.user?.assignedSites && data.user.assignedSites.length > 0 && data.user.assignedSites[0] !== 'ALL') {
+        setSelectedSchool(data.user.assignedSites[0]);
+      }
+
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Live GAS API fetch failed:', err);
+      setFetchError(err.message || 'Failed to fetch live data from Google Apps Script');
+      setIsLoading(false);
+    }
   }, []);
 
-  // Compute available teachers list based on active school and grade
-  const availableTeachers = useMemo(() => {
-    if (selectedSchool === 'ALL') {
-      const allT = new Set();
-      students.forEach(s => {
-        if (selectedGrade === 'ALL' || s.grade === Number(selectedGrade)) {
-          allT.add(s.teacher);
-        }
-      });
-      return Array.from(allT).sort();
-    }
-
-    const schoolTeachers = TEACHERS_BY_SCHOOL_AND_GRADE[selectedSchool];
-    if (!schoolTeachers) return [];
-
-    if (selectedGrade === 'ALL') {
-      const allForSchool = new Set();
-      Object.values(schoolTeachers).forEach(arr => arr.forEach(t => allForSchool.add(t)));
-      return Array.from(allForSchool).sort();
-    }
-
-    return schoolTeachers[selectedGrade] || [];
-  }, [selectedSchool, selectedGrade, students]);
-
-  // Handle successful login credentials
+  // Handle successful Google GSI authentication
   const handleAuthSuccess = useCallback((token, decodedUser) => {
     const email = decodedUser?.email || '';
 
-    // STRICT DOMAIN LOCK
+    // STRICT CLIENT-SIDE DOMAIN LOCK
     if (!isValidStaffEmail(email)) {
       setBlockedEmail(email);
       setAuthError('domain_blocked');
@@ -141,7 +173,7 @@ export default function App() {
       id_token: token
     };
 
-    // Cache in sessionStorage for refresh persistence
+    // Cache in sessionStorage for persistence across page refreshes
     sessionStorage.setItem('wvusd_staff_token', token);
     sessionStorage.setItem('wvusd_staff_user', JSON.stringify(authUserData));
 
@@ -149,9 +181,21 @@ export default function App() {
     setCurrentRole(role);
     setAuthError(null);
     setBlockedEmail('');
-  }, []);
 
+    // Trigger live fetch with authenticated token
+    fetchLiveData(token);
+  }, [fetchLiveData]);
 
+  const hasInitialFetchedRef = useRef(false);
+
+  // Initial load check: if user already cached, fetch live data
+  useEffect(() => {
+    if (user && !hasInitialFetchedRef.current) {
+      hasInitialFetchedRef.current = true;
+      const cachedToken = sessionStorage.getItem('wvusd_staff_token');
+      fetchLiveData(cachedToken || user.email || SUPER_ADMIN_EMAIL);
+    }
+  }, [fetchLiveData, user]);
 
   // Initialize Google Identity Services (GSI)
   useEffect(() => {
@@ -191,12 +235,11 @@ export default function App() {
 
           window.google.accounts.id.prompt();
         } catch (err) {
-          console.warn('GSI Initialization info:', err);
+          console.warn('GSI Initialization notice:', err);
         }
       }
     };
 
-    // Attempt GSI initialization
     setupGSI();
     const timer = setInterval(() => {
       if (window.google?.accounts?.id) {
@@ -208,7 +251,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, [user, handleAuthSuccess]);
 
-  // Dev Super-Admin Bypass
+  // Super-Admin Dev Bypass (`kwendland@wvusd.org`)
   const handleDevBypass = (presetEmail = SUPER_ADMIN_EMAIL, presetRole = 'SUPER ADMIN') => {
     const mockUser = {
       email: presetEmail,
@@ -216,7 +259,7 @@ export default function App() {
       picture: null,
       role: presetRole,
       isSuperAdmin: presetRole === 'SUPER ADMIN',
-      id_token: 'mock-dev-token-wvusd-2026'
+      id_token: 'dev-bypass-token'
     };
 
     sessionStorage.setItem('wvusd_staff_token', mockUser.id_token);
@@ -225,6 +268,9 @@ export default function App() {
     setUser(mockUser);
     setCurrentRole(presetRole);
     setAuthError(null);
+
+    // Fetch live data immediately for test email
+    fetchLiveData(presetEmail);
   };
 
   // Sign Out
@@ -232,12 +278,46 @@ export default function App() {
     sessionStorage.removeItem('wvusd_staff_token');
     sessionStorage.removeItem('wvusd_staff_user');
     setUser(null);
+    setStudents([]);
+    setMeta(null);
     setAuthError(null);
+    setFetchError(null);
     setBlockedEmail('');
     if (window.google?.accounts?.id) {
       window.google.accounts.id.disableAutoSelect();
     }
   };
+
+  // Compute available school sites dynamically from live meta or student data
+  const availableSchools = useMemo(() => {
+    if (meta?.sites && meta.sites.length > 0) {
+      return meta.sites;
+    }
+    const sitesSet = new Set(students.map(s => s.school).filter(Boolean));
+    return Array.from(sitesSet).sort();
+  }, [meta, students]);
+
+  // Compute available grades dynamically
+  const availableGrades = useMemo(() => {
+    if (meta?.grades && meta.grades.length > 0) {
+      return meta.grades;
+    }
+    const gradesSet = new Set(students.map(s => s.gradeStr || `${s.grade}`).filter(Boolean));
+    return Array.from(gradesSet);
+  }, [meta, students]);
+
+  // Compute available teachers dynamically based on active school and grade
+  const availableTeachers = useMemo(() => {
+    let pool = students;
+    if (selectedSchool !== 'ALL') {
+      pool = pool.filter(s => s.school === selectedSchool);
+    }
+    if (selectedGrade !== 'ALL') {
+      pool = pool.filter(s => s.gradeStr === selectedGrade || `${s.grade}` === selectedGrade);
+    }
+    const teachersSet = new Set(pool.map(s => s.teacher).filter(Boolean));
+    return Array.from(teachersSet).sort();
+  }, [students, selectedSchool, selectedGrade]);
 
   // Handle drilldowns from SiteAdminOverview
   const handleDrilldown = ({ school, grade, teacher, filter, view }) => {
@@ -336,7 +416,7 @@ export default function App() {
                 Elementary Student Data & Intervention Portal
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-2 max-w-sm">
-                Year-over-Year Literacy Growth, Illuminate Multi-Attempt Tracking, and Small Group Table Pull-Outs.
+                Live Google Sheets & Illuminate Multi-Year Analytics across Grades 1–5.
               </p>
             </div>
 
@@ -353,7 +433,7 @@ export default function App() {
               <div className="relative flex py-1 items-center">
                 <div className="flex-grow border-t border-slate-200"></div>
                 <span className="flex-shrink mx-4 text-slate-400 text-[11px] uppercase font-bold tracking-wider">
-                  Development & Instant Preview
+                  Live Data Connection
                 </span>
                 <div className="flex-grow border-t border-slate-200"></div>
               </div>
@@ -368,34 +448,6 @@ export default function App() {
                   <ShieldCheck className="w-4 h-4 text-purple-600" />
                   <span>Super-Admin Dev Bypass ({SUPER_ADMIN_EMAIL})</span>
                 </button>
-
-                <div className="grid grid-cols-2 gap-2 text-left">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleDevBypass('specialist.roster@wvusd.org', 'SITE ADMIN / SPECIALIST');
-                      setSelectedSchool('Maple Hill Elementary');
-                    }}
-                    className="p-2.5 rounded-xl text-[11px] font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition"
-                  >
-                    <div className="text-[10px] text-emerald-600 uppercase">Specialist View</div>
-                    <div>Maple Hill Specialist</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleDevBypass('mrs.chang@wvusd.org', 'CLASSROOM TEACHER');
-                      setSelectedSchool('Collegewood Elementary');
-                      setSelectedGrade(3);
-                      setSelectedTeacher('Mrs. Chang');
-                    }}
-                    className="p-2.5 rounded-xl text-[11px] font-bold text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
-                  >
-                    <div className="text-[10px] text-blue-600 uppercase">Teacher View</div>
-                    <div>Collegewood 3rd Gr</div>
-                  </button>
-                </div>
               </div>
 
               <div className="text-[11px] text-slate-400 pt-1">
@@ -403,9 +455,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* School logos preview pill */}
             <div className="text-xs text-slate-400">
-              Serving Collegewood, Maple Hill, Vejar, Castle Rock, Evergreen, Quail Summit, Westhoff, CJ Morris & Walnut Elementary
+              Live Google Apps Script API Connection
             </div>
           </div>
 
@@ -429,8 +480,8 @@ export default function App() {
             setSelectedGrade={setSelectedGrade}
             selectedTeacher={selectedTeacher}
             setSelectedTeacher={setSelectedTeacher}
-            schoolsList={WVUSD_ELEMENTARY_SCHOOLS}
-            gradesList={[1, 2, 3, 4, 5]}
+            schoolsList={availableSchools}
+            gradesList={availableGrades}
             teachersList={availableTeachers}
             onSignOut={handleSignOut}
             currentRole={currentRole}
@@ -440,40 +491,131 @@ export default function App() {
           {/* Main Dashboard Workspace */}
           <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
             
-            {/* View 1: School Executive Overview (Site Admin & Specialist) */}
-            {activeView === 'overview' && (
-              <SiteAdminOverview
-                students={students}
-                selectedSchool={selectedSchool}
-                onDrilldown={handleDrilldown}
-              />
+            {/* Loading Indicator */}
+            {isLoading && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-10 text-center space-y-4 my-6">
+                <Loader2 className="w-10 h-10 text-blue-600 animate-spin mx-auto" />
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Loading Live WVUSD Elementary Student Dataset
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                    Retrieving multi-year records across 1st–5th ELA and Math tabs from Google Apps Script Web App...
+                  </p>
+                </div>
+                <div className="text-[11px] font-mono text-slate-400 max-w-xl mx-auto truncate">
+                  Endpoint: {fetchUrl}
+                </div>
+              </div>
             )}
 
-            {/* View 2: Classroom Teacher View (Roster Card Grid & Multi-Attempt Trails) */}
-            {activeView === 'teacher' && (
-              <TeacherDashboard
-                students={students}
-                selectedSchool={selectedSchool}
-                selectedGrade={selectedGrade}
-                selectedTeacher={selectedTeacher}
-                activeFilter={activeFilter}
-                setActiveFilter={setActiveFilter}
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-                onSelectStudent={handleSelectStudent}
-                onOpenSmallGroups={() => setActiveView('small-groups')}
-              />
+            {/* Fetch Error Display Screen with Exact Message and Retry Button */}
+            {fetchError && !isLoading && (
+              <div className="bg-white rounded-2xl border border-rose-200 shadow-md p-6 sm:p-8 space-y-4 my-6">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-rose-100 text-rose-600 shrink-0">
+                    <ShieldAlert className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-base font-bold text-rose-900">
+                      Live Google Apps Script Fetch Error
+                    </h3>
+                    <p className="text-xs text-slate-600">
+                      Could not retrieve live student records. The exact error returned by the network or backend is shown below:
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-rose-50 rounded-xl border border-rose-200 font-mono text-xs text-rose-800 break-all">
+                  {fetchError}
+                </div>
+
+                <div className="text-xs text-slate-500">
+                  <span className="font-bold">Requested Endpoint: </span>
+                  <code className="text-[11px] font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded break-all">
+                    {fetchUrl}
+                  </code>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <button
+                    onClick={() => fetchLiveData(sessionStorage.getItem('wvusd_staff_token') || user.email)}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Retry Live Fetch</span>
+                  </button>
+
+                  <a
+                    href={fetchUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open Raw API in New Tab</span>
+                  </a>
+                </div>
+              </div>
             )}
 
-            {/* View 3: Click-an-Assessment Small Group Builder */}
-            {activeView === 'small-groups' && (
-              <SmallGroupBuilder
-                students={students}
-                selectedSchool={selectedSchool}
-                selectedGrade={selectedGrade}
-                selectedTeacher={selectedTeacher}
-                onSelectStudent={handleSelectStudent}
-              />
+            {/* Render Dashboard Views when data loaded and no error */}
+            {!isLoading && !fetchError && students.length > 0 && (
+              <>
+                {/* View 1: School Executive Overview */}
+                {activeView === 'overview' && (
+                  <SiteAdminOverview
+                    students={students}
+                    selectedSchool={selectedSchool}
+                    onDrilldown={handleDrilldown}
+                  />
+                )}
+
+                {/* View 2: Classroom Teacher View (Chunked Roster Cards & Multi-Attempt Trails) */}
+                {activeView === 'teacher' && (
+                  <TeacherDashboard
+                    students={students}
+                    selectedSchool={selectedSchool}
+                    selectedGrade={selectedGrade}
+                    selectedTeacher={selectedTeacher}
+                    activeFilter={activeFilter}
+                    setActiveFilter={setActiveFilter}
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                    onSelectStudent={handleSelectStudent}
+                    onOpenSmallGroups={() => setActiveView('small-groups')}
+                  />
+                )}
+
+                {/* View 3: Click-an-Assessment Small Group Builder (Dynamic Tab Headers) */}
+                {activeView === 'small-groups' && (
+                  <SmallGroupBuilder
+                    students={students}
+                    selectedSchool={selectedSchool}
+                    selectedGrade={selectedGrade}
+                    selectedTeacher={selectedTeacher}
+                    meta={meta}
+                    onSelectStudent={handleSelectStudent}
+                  />
+                )}
+              </>
+            )}
+
+            {/* Empty state if students is empty after loading */}
+            {!isLoading && !fetchError && students.length === 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
+                <Database className="w-12 h-12 text-slate-300 mx-auto" />
+                <h3 className="text-base font-bold text-slate-800">No Student Records Found</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  The Google Apps Script web app responded successfully, but returned an empty dataset.
+                </p>
+                <button
+                  onClick={() => fetchLiveData(sessionStorage.getItem('wvusd_staff_token') || user.email)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold"
+                >
+                  Reload Live Data
+                </button>
+              </div>
             )}
 
           </main>
@@ -494,10 +636,10 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-700">WVUSD Elementary Literacy & Data Portal</span>
                 <span>•</span>
-                <span>Academic Year 2026-2027</span>
+                <span>Live Google Sheet Connected ({students.length.toLocaleString()} Students)</span>
               </div>
               <div className="text-[11px] text-slate-400">
-                Connected to Illuminate Data & Google Identity Services (GSI)
+                {meta?.lastUpdated ? `Last updated: ${meta.lastUpdated}` : 'Google Apps Script Web App'}
               </div>
             </div>
           </footer>

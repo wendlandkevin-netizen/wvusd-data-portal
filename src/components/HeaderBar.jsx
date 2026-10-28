@@ -227,7 +227,7 @@ export default function HeaderBar({
                 aria-label="Filter by Grade Level"
                 value={selectedGrade}
                 onChange={(e) => {
-                  setSelectedGrade(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value));
+                  setSelectedGrade(e.target.value);
                   setSelectedTeacher('ALL');
                 }}
                 className="text-xs font-semibold text-slate-700 bg-transparent focus:outline-none cursor-pointer"
@@ -235,7 +235,7 @@ export default function HeaderBar({
                 <option value="ALL">All Grades</option>
                 {gradesList.map((g) => (
                   <option key={g} value={g}>
-                    Grade {g} {g === 3 ? '(Focal)' : ''}
+                    Grade {g}
                   </option>
                 ))}
               </select>

@@ -10,7 +10,10 @@ import {
   Sparkles,
   LayoutGrid,
   List,
-  Eye
+  Eye,
+  ChevronDown,
+  BookOpen,
+  Calculator
 } from 'lucide-react';
 import { getSiteLogo, DISTRICT_LOGO } from '../config/constants';
 
@@ -27,6 +30,7 @@ export default function TeacherDashboard({
   onOpenSmallGroups
 }) {
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
+  const [visibleCount, setVisibleCount] = useState(60);
 
   // Filter criteria options
   const filterPills = [
@@ -36,24 +40,42 @@ export default function TeacherDashboard({
     { id: '504', label: '504 Plan' },
     { id: 'Foster/Homeless', label: 'Foster / Homeless' },
     { id: '🔴 YoY Decline', label: '🔴 YoY Decline / Regression' },
-    { id: 'Tier 3 Phonics', label: 'Tier 3 Phonics Deficit' }
+    { id: 'Tier 3 Phonics', label: 'Tier 3 Deficits' }
   ];
+
+  // Reset pagination whenever filters or search change
+  const filterKey = `${searchQuery}_${activeFilter}_${selectedSchool}_${selectedGrade}_${selectedTeacher}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
+    setVisibleCount(60);
+  }
 
   // Apply filters
   const filteredStudents = students.filter((s) => {
     // School filter
-    if (selectedSchool !== 'ALL' && s.school !== selectedSchool) return false;
-    // Grade filter
-    if (selectedGrade !== 'ALL' && s.grade !== Number(selectedGrade)) return false;
-    // Teacher filter
-    if (selectedTeacher !== 'ALL' && s.teacher !== selectedTeacher) return false;
+    if (selectedSchool !== 'ALL' && s.school !== selectedSchool && s.site !== selectedSchool) {
+      return false;
+    }
 
-    // Search query
+    // Grade filter (handles "3rd", "3", 3, etc.)
+    if (selectedGrade !== 'ALL') {
+      const matchGradeStr = s.gradeStr === selectedGrade;
+      const matchGradeNum = String(s.grade) === String(selectedGrade).replace(/\D/g, '');
+      if (!matchGradeStr && !matchGradeNum) return false;
+    }
+
+    // Teacher filter
+    if (selectedTeacher !== 'ALL' && s.teacher !== selectedTeacher) {
+      return false;
+    }
+
+    // Search query (Student Name, ID, or Teacher)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      const matchName = s.name.toLowerCase().includes(q);
-      const matchId = s.id.toLowerCase().includes(q);
-      const matchTeacher = s.teacher.toLowerCase().includes(q);
+      const matchName = s.name?.toLowerCase().includes(q);
+      const matchId = s.id?.toLowerCase().includes(q);
+      const matchTeacher = s.teacher?.toLowerCase().includes(q);
       if (!matchName && !matchId && !matchTeacher) return false;
     }
 
@@ -68,6 +90,9 @@ export default function TeacherDashboard({
     return true;
   });
 
+  // Chunked displayed students for lightning-fast DOM rendering
+  const displayedStudents = filteredStudents.slice(0, visibleCount);
+
   return (
     <div className="space-y-5 animate-fade-in pb-12">
       
@@ -80,7 +105,7 @@ export default function TeacherDashboard({
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search student by name, student ID, or teacher..."
+              placeholder="Search by student name, ID (e.g. 328869), or teacher..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
@@ -165,10 +190,13 @@ export default function TeacherDashboard({
         </div>
 
         {/* Status bar */}
-        <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-2.5 gap-2">
           <div>
-            Showing <strong className="text-slate-800">{filteredStudents.length}</strong> of{' '}
-            <strong className="text-slate-800">{students.length}</strong> rostered students
+            Showing <strong className="text-slate-800">{displayedStudents.length}</strong> of{' '}
+            <strong className="text-slate-800">{filteredStudents.length}</strong> matched students
+            {filteredStudents.length !== students.length && (
+              <span> (filtered from <strong className="text-slate-800">{students.length}</strong> total)</span>
+            )}
             {selectedSchool !== 'ALL' && ` • ${selectedSchool}`}
             {selectedGrade !== 'ALL' && ` • Grade ${selectedGrade}`}
             {selectedTeacher !== 'ALL' && ` • ${selectedTeacher}`}
@@ -207,9 +235,9 @@ export default function TeacherDashboard({
       {/* Grid View */}
       {viewMode === 'grid' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredStudents.map((student) => {
-            const lowestSkill = student.lowestPhonics[0];
+          {displayedStudents.map((student) => {
             const siteLogo = getSiteLogo(student.school);
+            const { headline } = student;
 
             return (
               <div
@@ -223,21 +251,24 @@ export default function TeacherDashboard({
                 )}
 
                 <div>
-                  {/* Card Header: Name, ID, Badges */}
+                  {/* Card Header: Authoritative Roster Info */}
                   <div className="flex items-start justify-between gap-2">
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition">
+                        <h4 className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition truncate">
                           {student.name}
                         </h4>
-                        <span className="text-[11px] font-mono text-slate-400">
+                        <span className="text-[11px] font-mono text-slate-400 shrink-0">
                           #{student.id}
                         </span>
                       </div>
-                      <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
-                        <span>Grade {student.grade}</span>
+                      <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 truncate">
+                        <span>Grade {student.gradeStr || student.grade}</span>
                         <span>•</span>
-                        <span className="font-medium text-slate-700">{student.teacher}</span>
+                        <span className="font-medium text-slate-700 truncate">{student.teacher}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {student.school}
                       </div>
                     </div>
 
@@ -251,128 +282,108 @@ export default function TeacherDashboard({
                     </div>
                   </div>
 
-                  {/* Program Badges */}
+                  {/* Program Badges & Matched Sheet Tabs */}
                   <div className="flex flex-wrap items-center gap-1 mt-2.5">
                     {student.isEL && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                        EL: {student.elLevel ? student.elLevel.split(' ')[0] : 'EL'}
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                        EL: {student.elLevel || 'EL'}
                       </span>
                     )}
                     {student.isSpEd && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
-                        SpEd / IEP
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                        SpEd
                       </span>
                     )}
                     {student.is504 && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                         504
                       </span>
                     )}
                     {student.isFosterHomeless && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-pink-100 text-pink-800 border border-pink-200">
-                        Foster / Homeless
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-100 text-pink-800 border border-pink-200">
+                        Foster/Homeless
                       </span>
                     )}
                     {student.hasYoYDecline && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
                         <TrendingDown className="w-3 h-3 text-rose-600" />
                         YoY Decline
                       </span>
                     )}
                     {!student.hasYoYDecline && student.overallYoYStatus === 'growth' && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
                         <TrendingUp className="w-3 h-3 text-emerald-600" />
                         YoY Growth
                       </span>
                     )}
+                    {student.matchedTabs?.map((t) => (
+                      <span key={t} className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                        {t}
+                      </span>
+                    ))}
                   </div>
 
-                  {/* Assessment Performance Triad */}
-                  <div className="grid grid-cols-3 gap-2 bg-slate-50 rounded-xl p-2.5 mt-3 border border-slate-100">
+                  {/* Dynamic Headline Assessment Metrics Grid */}
+                  <div className="grid grid-cols-2 gap-2 bg-slate-50 rounded-xl p-2.5 mt-3 border border-slate-100">
                     
-                    {/* Amira ARM */}
-                    <div className="text-center">
-                      <div className="text-[10px] font-bold text-slate-500 uppercase">Amira ARM</div>
-                      <div className="text-xs font-extrabold text-slate-900 mt-0.5">
-                        {student.amira.curr.latest || 'N/A'}
+                    {/* ELA Metric (Amira or STAR) */}
+                    <div className="text-left bg-white p-2 rounded-lg border border-slate-100">
+                      <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                        <BookOpen className="w-3 h-3 text-blue-600" />
+                        <span className="truncate">{headline.star ? 'STAR Reading' : headline.amira ? 'Amira ARM' : 'ELA Score'}</span>
                       </div>
-                      {/* Mini progression trail */}
-                      {student.amira.curr.history.length > 1 && (
-                        <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate" title={`Attempts: ${student.amira.curr.history.join(' → ')}`}>
-                          {student.amira.curr.history.slice(-3).join('→')}
+                      <div className="text-xs font-black text-slate-900 mt-1 truncate">
+                        {headline.star?.parsed.latest ? `Level ${headline.star.parsed.latest}` :
+                         headline.amira?.parsed.latest ? `${headline.amira.parsed.latest} ARM` :
+                         headline.orr?.parsed.latest ? `ORR ${headline.orr.parsed.latest}` : 'N/A'}
+                      </div>
+                      {/* Multi-attempt progression trail */}
+                      {headline.star?.parsed.history.length > 1 && (
+                        <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate">
+                          {headline.star.parsed.history.slice(-3).join(' → ')}
                         </div>
                       )}
-                      <div className="text-[9px] mt-0.5">
-                        <span className={`px-1 py-0.2 rounded font-bold ${
-                          student.amira.growth.status === 'growth' ? 'text-emerald-700 bg-emerald-50' :
-                          student.amira.growth.status === 'decline' ? 'text-rose-700 bg-rose-50' : 'text-slate-500'
-                        }`}>
-                          {student.amira.growth.status === 'growth' ? `+${student.amira.growth.delta}` :
-                           student.amira.growth.status === 'decline' ? `${student.amira.growth.delta}` : 'Steady'}
-                        </span>
-                      </div>
+                      {headline.amira?.parsed.history.length > 1 && !headline.star && (
+                        <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate">
+                          {headline.amira.parsed.history.slice(-3).join(' → ')}
+                        </div>
+                      )}
                     </div>
 
-                    {/* STAR Reading */}
-                    <div className="text-center border-x border-slate-200 px-1">
-                      <div className="text-[10px] font-bold text-slate-500 uppercase">STAR IRL</div>
-                      <div className="text-xs font-extrabold text-slate-900 mt-0.5">
-                        {student.star.curr.latest || 'N/A'}
+                    {/* Math Metric */}
+                    <div className="text-left bg-white p-2 rounded-lg border border-slate-100">
+                      <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                        <Calculator className="w-3 h-3 text-indigo-600" />
+                        <span className="truncate">{headline.math ? 'Math CA' : 'Math Score'}</span>
                       </div>
-                      {/* Mini progression trail */}
-                      {student.star.curr.history.length > 1 && (
-                        <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate" title={`Attempts: ${student.star.curr.history.join(' → ')}`}>
-                          {student.star.curr.history.slice(-3).join('→')}
+                      <div className="text-xs font-black text-slate-900 mt-1 truncate">
+                        {headline.math?.parsed.latest ? `${headline.math.parsed.latest}%` : 'N/A'}
+                      </div>
+                      {headline.math?.parsed.history.length > 1 && (
+                        <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate">
+                          {headline.math.parsed.history.slice(-3).join(' → ')}
                         </div>
                       )}
-                      <div className="text-[9px] mt-0.5">
-                        <span className={`px-1 py-0.2 rounded font-bold ${
-                          student.star.growth.status === 'growth' ? 'text-emerald-700 bg-emerald-50' :
-                          student.star.growth.status === 'decline' ? 'text-rose-700 bg-rose-50' : 'text-slate-500'
-                        }`}>
-                          {student.star.growth.status === 'growth' ? `+${student.star.growth.delta}` :
-                           student.star.growth.status === 'decline' ? `${student.star.growth.delta}` : 'Steady'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* ORR Level */}
-                    <div className="text-center">
-                      <div className="text-[10px] font-bold text-slate-500 uppercase">ORR Level</div>
-                      <div className="text-xs font-extrabold text-slate-900 mt-0.5">
-                        {student.orr.curr.latest || 'N/A'}
-                      </div>
-                      {/* Mini progression trail */}
-                      {student.orr.curr.history.length > 1 && (
-                        <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate" title={`Attempts: ${student.orr.curr.history.join(' → ')}`}>
-                          {student.orr.curr.history.slice(-3).join('→')}
-                        </div>
-                      )}
-                      <div className="text-[9px] mt-0.5">
-                        <span className={`px-1 py-0.2 rounded font-bold ${
-                          student.orr.growth.status === 'growth' ? 'text-emerald-700 bg-emerald-50' :
-                          student.orr.growth.status === 'decline' ? 'text-rose-700 bg-rose-50' : 'text-slate-500'
-                        }`}>
-                          {student.orr.growth.status === 'growth' ? `+${student.orr.growth.delta}` :
-                           student.orr.growth.status === 'decline' ? `${student.orr.growth.delta}` : 'Steady'}
-                        </span>
-                      </div>
                     </div>
 
                   </div>
 
-                  {/* Phonics Deficit Highlight */}
-                  {lowestSkill && lowestSkill.score !== null && (
-                    <div className="mt-3 flex items-center justify-between text-[11px] bg-slate-50/80 px-2.5 py-1.5 rounded-lg border border-slate-100">
-                      <span className="text-slate-500 truncate mr-2">
-                        Lowest: <strong className="text-slate-700">{lowestSkill.name}</strong>
-                      </span>
-                      <span className={`font-bold shrink-0 ${
-                        lowestSkill.tierNum === 3 ? 'text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded' :
-                        lowestSkill.tierNum === 2 ? 'text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded' : 'text-emerald-600'
-                      }`}>
-                        {lowestSkill.score}/{lowestSkill.max} ({lowestSkill.percent}%)
-                      </span>
+                  {/* Year-over-Year Trajectory Snippet */}
+                  {student.yoyComparisons.length > 0 && (
+                    <div className="mt-2.5 space-y-1">
+                      {student.yoyComparisons.slice(0, 2).map((comp) => (
+                        <div key={comp.family} className="flex items-center justify-between text-[11px] bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                          <span className="text-slate-600 font-semibold truncate pr-1">
+                            {comp.family}
+                          </span>
+                          <span className={`text-[10px] font-bold shrink-0 px-1.5 py-0.2 rounded ${
+                            comp.growth.status === 'growth' ? 'bg-emerald-100 text-emerald-800' :
+                            comp.growth.status === 'decline' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {comp.prev.parsed.latest} → {comp.curr.parsed.latest}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -399,18 +410,17 @@ export default function TeacherDashboard({
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-bold text-[10px] tracking-wider">
                 <tr>
                   <th className="py-3 px-4">Student</th>
-                  <th className="py-3 px-3">School & Teacher</th>
+                  <th className="py-3 px-3">Grade & Site</th>
+                  <th className="py-3 px-3">Teacher</th>
                   <th className="py-3 px-3">Programs</th>
-                  <th className="py-3 px-3 text-center">Amira ARM</th>
-                  <th className="py-3 px-3 text-center">STAR IRL</th>
-                  <th className="py-3 px-3 text-center">ORR Level</th>
-                  <th className="py-3 px-3 text-center">YoY Trajectory</th>
-                  <th className="py-3 px-3">Lowest Phonics Skill</th>
+                  <th className="py-3 px-3 text-center">ELA Metric</th>
+                  <th className="py-3 px-3 text-center">Math Metric</th>
+                  <th className="py-3 px-3 text-center">YoY Status</th>
                   <th className="py-3 px-3 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredStudents.map((s) => (
+                {displayedStudents.map((s) => (
                   <tr
                     key={s.id}
                     onClick={() => onSelectStudent(s)}
@@ -421,11 +431,14 @@ export default function TeacherDashboard({
                       <div className="text-[10px] font-mono text-slate-400">#{s.id}</div>
                     </td>
                     <td className="py-3 px-3 text-slate-600">
-                      <div>Grade {s.grade} • {s.teacher}</div>
-                      <div className="text-[10px] text-slate-400">{s.school}</div>
+                      <div>Grade {s.gradeStr || s.grade}</div>
+                      <div className="text-[10px] text-slate-400 truncate max-w-[140px]">{s.school}</div>
+                    </td>
+                    <td className="py-3 px-3 text-slate-700 font-medium truncate max-w-[140px]">
+                      {s.teacher}
                     </td>
                     <td className="py-3 px-3">
-                      <div className="flex flex-wrap gap-1 max-w-[140px]">
+                      <div className="flex flex-wrap gap-1 max-w-[120px]">
                         {s.isEL && (
                           <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
                             EL
@@ -449,13 +462,12 @@ export default function TeacherDashboard({
                       </div>
                     </td>
                     <td className="py-3 px-3 text-center font-bold text-slate-800">
-                      {s.amira.curr.latest || 'N/A'}
+                      {s.headline.star?.parsed.latest ? `STAR ${s.headline.star.parsed.latest}` :
+                       s.headline.amira?.parsed.latest ? `Amira ${s.headline.amira.parsed.latest}` :
+                       s.headline.orr?.parsed.latest ? `ORR ${s.headline.orr.parsed.latest}` : '—'}
                     </td>
                     <td className="py-3 px-3 text-center font-bold text-slate-800">
-                      {s.star.curr.latest || 'N/A'}
-                    </td>
-                    <td className="py-3 px-3 text-center font-bold text-slate-800">
-                      {s.orr.curr.latest || 'N/A'}
+                      {s.headline.math?.parsed.latest ? `${s.headline.math.parsed.latest}%` : '—'}
                     </td>
                     <td className="py-3 px-3 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -465,18 +477,6 @@ export default function TeacherDashboard({
                         {s.overallYoYStatus === 'growth' ? '🟢 Growth' :
                          s.overallYoYStatus === 'decline' ? '🔴 Decline' : '🟡 Steady'}
                       </span>
-                    </td>
-                    <td className="py-3 px-3 text-slate-600">
-                      {s.lowestPhonics[0]?.name ? (
-                        <div className="text-[11px]">
-                          <span>{s.lowestPhonics[0].name}</span>{' '}
-                          <span className="font-bold text-rose-600">
-                            ({s.lowestPhonics[0].percent}%)
-                          </span>
-                        </div>
-                      ) : (
-                        '—'
-                      )}
                     </td>
                     <td className="py-3 px-3 text-center">
                       <button
@@ -491,6 +491,26 @@ export default function TeacherDashboard({
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Pagination / Chunked Rendering Load More Button */}
+      {visibleCount < filteredStudents.length && (
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
+          <button
+            onClick={() => setVisibleCount((prev) => prev + 60)}
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl text-xs font-bold shadow-xs transition transform hover:-translate-y-0.5"
+          >
+            <span>Load Next 60 Students</span>
+            <ChevronDown className="w-4 h-4" />
+          </button>
+          
+          <button
+            onClick={() => setVisibleCount(filteredStudents.length)}
+            className="text-xs font-semibold text-slate-500 hover:text-slate-800 py-2 px-3 rounded-xl hover:bg-slate-100 transition"
+          >
+            Show All ({filteredStudents.length.toLocaleString()} Students)
+          </button>
         </div>
       )}
 

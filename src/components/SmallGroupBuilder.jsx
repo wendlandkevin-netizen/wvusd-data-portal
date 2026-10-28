@@ -1,96 +1,140 @@
 // src/components/SmallGroupBuilder.jsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { 
   Sparkles, 
   Copy, 
   Check, 
   Printer, 
   CheckCircle2,
-  ListFilter
+  ListFilter,
+  BookOpen,
+  Calculator,
+  Layers
 } from 'lucide-react';
-
-const ASSESSMENTS_FOR_GROUPING = [
-  { id: 'soundSegmentation', label: 'Sound Segmentation', type: 'phonics', max: 15, benchmarkScore: 12 },
-  { id: 'decodingWords', label: 'Decoding Words', type: 'phonics', max: 85, benchmarkScore: 68 },
-  { id: 'oralBlending', label: 'Oral Blending', type: 'phonics', max: 15, benchmarkScore: 12 },
-  { id: 'digraphsVowels', label: 'Digraphs & Vowel Sounds', type: 'phonics', max: 15, benchmarkScore: 12 },
-  { id: 'removingManipulating', label: 'Removing & Manipulating Phonemes', type: 'phonics', max: 15, benchmarkScore: 12 },
-  { id: 'firstGradeWordList', label: '1st Grade Word List', type: 'phonics', max: 55, benchmarkScore: 44 },
-  { id: 'amira', label: 'Amira ARM Fluency', type: 'amira', max: 4.0, benchmarkScore: 3.0 },
-  { id: 'star', label: 'STAR Instructional Reading', type: 'star', max: 4.0, benchmarkScore: 3.0 },
-  { id: 'narrativeWriting', label: 'Narrative Writing Rubric', type: 'writing', max: 4, benchmarkScore: 3.0 },
-  { id: 'opinionWriting', label: 'Opinion Writing Rubric', type: 'writing', max: 4, benchmarkScore: 3.0 },
-  { id: 'informationalWriting', label: 'Informational Writing Rubric', type: 'writing', max: 4, benchmarkScore: 3.0 }
-];
+import { parseMultiAttempt } from '../utils/dataParser';
 
 export default function SmallGroupBuilder({
   students = [],
   selectedSchool,
   selectedGrade,
   selectedTeacher,
+  meta,
   onSelectStudent
 }) {
-  const [selectedAssessmentId, setSelectedAssessmentId] = useState('soundSegmentation');
+  const tabHeadersByTab = useMemo(() => meta?.tabHeadersByTab || {}, [meta?.tabHeadersByTab]);
+  const allTabs = useMemo(() => Object.keys(tabHeadersByTab), [tabHeadersByTab]);
+
+  // Available tabs matching active grade scope
+  const relevantTabs = useMemo(() => {
+    if (selectedGrade !== 'ALL') {
+      const gClean = String(selectedGrade).toLowerCase().replace(/\s+/g, '');
+      const filtered = allTabs.filter(t => t.toLowerCase().replace(/\s+/g, '').includes(gClean));
+      if (filtered.length > 0) return filtered;
+    }
+    return allTabs.length > 0 ? allTabs : ['3rd ELA', '3rd Math'];
+  }, [allTabs, selectedGrade]);
+
+  const [activeTabOverride, setActiveTabOverride] = useState(null);
+  const activeTab = (activeTabOverride && relevantTabs.includes(activeTabOverride)) 
+    ? activeTabOverride 
+    : (relevantTabs[0] || '3rd ELA');
+
+  const [selectedHeaderOverride, setSelectedHeaderOverride] = useState(null);
   const [copied, setCopied] = useState(false);
 
-  // Filter students for active school, grade, teacher
+  // Headers available in current active tab (filter out non-assessment columns)
+  const tabHeaders = useMemo(() => {
+    const rawHeaders = tabHeadersByTab[activeTab] || [];
+    return rawHeaders.filter(h => 
+      !h.includes('User Name') && 
+      !h.includes('English Proficiency') && 
+      !h.includes('Special Ed') && 
+      !h.includes('504 Accommodations') &&
+      !h.includes('Date and Time') &&
+      !h.includes('Attempts Number Possible')
+    );
+  }, [tabHeadersByTab, activeTab]);
+
+  // Derive preferred / active header
+  const selectedHeader = useMemo(() => {
+    if (selectedHeaderOverride && tabHeaders.includes(selectedHeaderOverride)) {
+      return selectedHeaderOverride;
+    }
+    if (tabHeaders.length === 0) return '';
+    return tabHeaders.find(h => /ARM|STAR|Percent Correct|Sound Segmentation|Decoding/i.test(h)) || tabHeaders[0];
+  }, [selectedHeaderOverride, tabHeaders]);
+
+  // Scope students matching school, grade, teacher
   const scopeStudents = useMemo(() => {
     return students.filter((s) => {
-      if (selectedSchool !== 'ALL' && s.school !== selectedSchool) return false;
-      if (selectedGrade !== 'ALL' && s.grade !== Number(selectedGrade)) return false;
+      if (selectedSchool !== 'ALL' && s.school !== selectedSchool && s.site !== selectedSchool) return false;
+      if (selectedGrade !== 'ALL') {
+        const matchGradeStr = s.gradeStr === selectedGrade;
+        const matchGradeNum = String(s.grade) === String(selectedGrade).replace(/\D/g, '');
+        if (!matchGradeStr && !matchGradeNum) return false;
+      }
       if (selectedTeacher !== 'ALL' && s.teacher !== selectedTeacher) return false;
       return true;
     });
   }, [students, selectedSchool, selectedGrade, selectedTeacher]);
 
-  const activeAssessment = ASSESSMENTS_FOR_GROUPING.find(a => a.id === selectedAssessmentId) || ASSESSMENTS_FOR_GROUPING[0];
+  // Evaluate any student on the selected header
+  const evaluateStudent = useCallback((student, header) => {
+    if (!header) return { score: null, display: '—', percent: 0 };
 
-  // Helper to extract numeric score and percentage for any student on active assessment
-  const evaluateStudentAssessment = (student, assessment) => {
-    let score = null;
-    let max = assessment.max;
-    let displayScore = 'N/A';
-    let percent = 0;
-
-    if (assessment.type === 'phonics') {
-      const p = student.phonics.find(item => item.id === assessment.id);
-      if (p && p.score !== null) {
-        score = p.score;
-        percent = p.percent;
-        displayScore = `${score} / ${max}`;
-      }
-    } else if (assessment.type === 'amira') {
-      const num = student.amira.curr.latestNumeric;
-      if (num !== null) {
-        score = num;
-        percent = Math.min(100, Math.round((num / student.grade) * 80));
-        displayScore = `${student.amira.curr.latest} ARM`;
-      }
-    } else if (assessment.type === 'star') {
-      const num = student.star.curr.latestNumeric;
-      if (num !== null) {
-        score = num;
-        percent = Math.min(100, Math.round((num / student.grade) * 80));
-        displayScore = `Level ${student.star.curr.latest}`;
-      }
-    } else if (assessment.type === 'writing') {
-      const wFieldId = assessment.id === 'narrativeWriting' ? 'narrativeContent' :
-                       assessment.id === 'opinionWriting' ? 'opinionContent' : 'informationalContent';
-      const w = student.writing.find(item => item.id === wFieldId);
-      if (w && w.score !== null) {
-        score = w.score;
-        percent = Math.round((score / 4) * 100);
-        displayScore = `${score} / 4.0`;
-      }
+    // Look in raw assessmentsByTab, or metrics, or allParsedColumns
+    let rawVal = student.raw?.assessmentsByTab?.[activeTab]?.[header];
+    if (rawVal === undefined || rawVal === null) {
+      rawVal = student.raw?.metrics?.[header];
+    }
+    if (rawVal === undefined || rawVal === null) {
+      const col = student.allParsedColumns?.find(c => c.header === header);
+      rawVal = col?.rawVal;
     }
 
-    return { score, max, displayScore, percent };
-  };
+    if (rawVal === undefined || rawVal === null || rawVal === '' || rawVal === '-') {
+      return { score: null, display: 'No Score', percent: 0 };
+    }
 
-  // Group students into 3 tiers based on percentage:
-  // Intensive: < 60%
-  // Strategic: 60 - 79%
-  // Benchmark: >= 80%
+    const parsed = parseMultiAttempt(rawVal);
+    const num = parsed.latestNumeric;
+
+    if (num === null) {
+      return { score: null, display: parsed.latest || 'N/A', percent: 0 };
+    }
+
+    // Determine max and percentage
+    let max = 100;
+    let percent = Math.round(num);
+
+    const outOfMatch = header.match(/out of\s+(\d+)/i) || header.match(/\/(\d+)/);
+    if (outOfMatch) {
+      max = parseInt(outOfMatch[1], 10);
+      percent = Math.min(100, Math.round((num / max) * 100));
+    } else if (/percent/i.test(header)) {
+      max = 100;
+      percent = Math.min(100, Math.round(num));
+    } else if (/writing/i.test(header) || /rubric/i.test(header) || (num <= 4 && /content|conventions/i.test(header))) {
+      max = 4;
+      percent = Math.min(100, Math.round((num / 4) * 100));
+    } else if (/arm|star/i.test(header)) {
+      // Benchmark against grade level
+      const targetGrade = student.grade || 3;
+      percent = Math.min(100, Math.round((num / Math.max(1, targetGrade)) * 80));
+    } else if (num <= 15) {
+      max = 15;
+      percent = Math.min(100, Math.round((num / 15) * 100));
+    }
+
+    return {
+      score: num,
+      display: parsed.latest,
+      history: parsed.history,
+      percent
+    };
+  }, [activeTab]);
+
+  // Group scoped students into 3 Tiers
   const groups = useMemo(() => {
     const intensive = [];
     const strategic = [];
@@ -98,11 +142,12 @@ export default function SmallGroupBuilder({
     const unassessed = [];
 
     scopeStudents.forEach((student) => {
-      const res = evaluateStudentAssessment(student, activeAssessment);
+      const res = evaluateStudent(student, selectedHeader);
       const studentWithScore = {
         ...student,
         evalScore: res.score,
-        evalDisplay: res.displayScore,
+        evalDisplay: res.display,
+        evalHistory: res.history || [],
         evalPercent: res.percent
       };
 
@@ -117,52 +162,56 @@ export default function SmallGroupBuilder({
       }
     });
 
-    // Sort within tiers lowest to highest
     intensive.sort((a, b) => a.evalPercent - b.evalPercent);
     strategic.sort((a, b) => a.evalPercent - b.evalPercent);
     benchmark.sort((a, b) => b.evalPercent - a.evalPercent);
 
     return { intensive, strategic, benchmark, unassessed };
-  }, [scopeStudents, activeAssessment]);
+  }, [scopeStudents, selectedHeader, evaluateStudent]);
 
   // Suggested instructional focus routines for each column
   const getFocusRoutine = (tier) => {
-    if (activeAssessment.type === 'phonics') {
-      if (tier === 'intensive') return 'Daily 20m pull-out: UFLI Foundations sound manipulation with elkonin sound boxes & continuous blending drill.';
-      if (tier === 'strategic') return 'Targeted 15m routine: Guided decodable passage repeated reading with focus on targeted phonics pattern.';
-      return 'Enrichment routine: Multisyllabic word decoding, morphological prefix/suffix study, and paired fluency reading.';
+    const isMath = /math/i.test(activeTab) || /math/i.test(selectedHeader);
+    const isWriting = /writing/i.test(selectedHeader);
+
+    if (isMath) {
+      if (tier === 'intensive') return 'Targeted Math Workshop: Concrete-Representational-Abstract manipulatives & small-group re-teaching of targeted standard.';
+      if (tier === 'strategic') return 'Guided Problem Solving: Error analysis routines, visual math modeling, and peer math discourse.';
+      return 'Math Enrichment: Open-ended mathematical tasks, multi-step problem solving, and real-world investigations.';
     }
-    if (activeAssessment.type === 'writing') {
-      if (tier === 'intensive') return 'Guided interactive sentence-framing, oral rehearsal, and explicit anchor chart modeling.';
-      if (tier === 'strategic') return 'Focus on transition phrases, evidence elaboration, and self-check conventions rubric.';
+
+    if (isWriting) {
+      if (tier === 'intensive') return 'Interactive sentence-framing, oral rehearsal, and explicit anchor chart conventions modeling.';
+      if (tier === 'strategic') return 'Focus on transition phrases, evidence elaboration, and self-check rubric editing.';
       return 'Advanced author craft: Varying sentence lengths, vivid sensory diction, and peer review editing.';
     }
-    // Fluency / Reading
-    if (tier === 'intensive') return 'Echo reading & choral repeated reading with decodable passages (15 min daily).';
-    if (tier === 'strategic') return 'Partner fluency timing, phrasing prosody coaching, and comprehension retelling.';
-    return 'Independent book club discussion circles and novel study comprehension synthesis.';
+
+    // Phonics / ELA Reading
+    if (tier === 'intensive') return 'Daily 15-20m pull-out: UFLI Foundations sound manipulation with elkonin sound boxes & continuous blending drill.';
+    if (tier === 'strategic') return 'Targeted 15m routine: Guided decodable passage repeated reading with focus on targeted phonics pattern.';
+    return 'Enrichment routine: Multisyllabic word decoding, morphological prefix/suffix study, and paired fluency reading.';
   };
 
   // Copy groupings to clipboard
   const handleCopyGroups = () => {
-    const text = `WVUSD SMALL GROUP ROSTERS: ${activeAssessment.label}
-Class: ${selectedSchool !== 'ALL' ? selectedSchool : 'All Sites'} | Grade ${selectedGrade !== 'ALL' ? selectedGrade : 'All'} | Teacher: ${selectedTeacher !== 'ALL' ? selectedTeacher : 'All'}
+    const text = `WVUSD SMALL GROUP ROSTERS: ${selectedHeader || activeTab}
+Sheet Tab: ${activeTab} | Scope: ${selectedSchool !== 'ALL' ? selectedSchool : 'All Sites'} | Grade: ${selectedGrade !== 'ALL' ? selectedGrade : 'All'} | Teacher: ${selectedTeacher !== 'ALL' ? selectedTeacher : 'All'}
 Generated: ${new Date().toLocaleDateString()}
 
 🔴 TIER 3: INTENSIVE NEEDS (<60%) [Count: ${groups.intensive.length}]
 Instructional Focus: ${getFocusRoutine('intensive')}
 Students:
-${groups.intensive.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%) ${s.isEL ? '[EL]' : ''} ${s.isSpEd ? '[IEP]' : ''}`).join('\n') || 'None'}
+${groups.intensive.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.isEL ? '[EL]' : ''} ${s.isSpEd ? '[IEP]' : ''}`).join('\n') || 'None'}
 
 🟡 TIER 2: STRATEGIC SUPPORT (60-79%) [Count: ${groups.strategic.length}]
 Instructional Focus: ${getFocusRoutine('strategic')}
 Students:
-${groups.strategic.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%) ${s.isEL ? '[EL]' : ''} ${s.isSpEd ? '[IEP]' : ''}`).join('\n') || 'None'}
+${groups.strategic.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.isEL ? '[EL]' : ''} ${s.isSpEd ? '[IEP]' : ''}`).join('\n') || 'None'}
 
 🟢 TIER 1: BENCHMARK (80%+) [Count: ${groups.benchmark.length}]
 Instructional Focus: ${getFocusRoutine('benchmark')}
 Students:
-${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`).join('\n') || 'None'}
+${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%]`).join('\n') || 'None'}
 `;
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -172,7 +221,7 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       
-      {/* Top Banner & Assessment Clicker Bar */}
+      {/* Top Banner & Assessment Selection Ribbon */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 space-y-4">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
@@ -185,7 +234,7 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
               </h2>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Select any literacy subtest or writing rubric below to instantly partition your classroom into 3 targeted intervention table pull-outs.
+              Select ANY column header from your live Google Sheet tabs (1st ELA–5th Math) to partition your class into 3 targeted intervention tables.
             </p>
           </div>
 
@@ -217,31 +266,55 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
           </div>
         </div>
 
-        {/* Clickable Assessment Headers Tab Ribbon */}
+        {/* Tab Switcher (e.g. 3rd ELA, 3rd Math, 4th ELA, 4th Math, etc.) */}
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-2 overflow-x-auto">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+            <Layers className="w-3.5 h-3.5" />
+            Sheet Tab:
+          </span>
+          {relevantTabs.map((tab) => {
+            const isTabActive = activeTab === tab;
+            const isMath = /math/i.test(tab);
+            return (
+              <button
+                key={tab}
+                onClick={() => {
+                  setActiveTabOverride(tab);
+                  setSelectedHeaderOverride(null);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                  isTabActive
+                    ? isMath ? 'bg-indigo-600 text-white shadow-xs' : 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {isMath ? <Calculator className="w-3.5 h-3.5" /> : <BookOpen className="w-3.5 h-3.5" />}
+                <span>{tab}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Clickable Column Header Selector Pills */}
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
             <ListFilter className="w-3.5 h-3.5" />
-            Click an Assessment Header to Group Roster:
+            Click Any Live Assessment Column Header in [{activeTab}]:
           </div>
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
-            {ASSESSMENTS_FOR_GROUPING.map((a) => {
-              const isSelected = selectedAssessmentId === a.id;
+            {tabHeaders.map((header) => {
+              const isSelected = selectedHeader === header;
               return (
                 <button
-                  key={a.id}
-                  onClick={() => setSelectedAssessmentId(a.id)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-2 ${
+                  key={header}
+                  onClick={() => setSelectedHeaderOverride(header)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
                     isSelected
-                      ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-500/30'
+                      ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-800'
                       : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200/80'
                   }`}
                 >
-                  <span>{a.label}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-extrabold ${
-                    isSelected ? 'bg-indigo-700 text-white' : 'bg-slate-200/80 text-slate-600'
-                  }`}>
-                    {a.type}
-                  </span>
+                  <span className="truncate max-w-[260px]">{header}</span>
                 </button>
               );
             })}
@@ -250,12 +323,12 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
 
         {/* Selected Context Meta */}
         <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
-          <div>
-            Active Assessment: <strong className="text-indigo-600 font-extrabold">{activeAssessment.label}</strong> (Max: {activeAssessment.max})
-            {' • '}Grouping <strong className="text-slate-800">{scopeStudents.length}</strong> students
+          <div className="truncate mr-2">
+            Active Column: <strong className="text-slate-900 font-bold">{selectedHeader || 'Select an assessment header'}</strong>
+            {' • '}Grouping <strong className="text-slate-800 font-bold">{scopeStudents.length}</strong> students
           </div>
-          <div className="text-slate-400 text-[11px]">
-            Click any student to view comprehensive history & SST prompt
+          <div className="text-slate-400 text-[11px] shrink-0">
+            Click any student to view deep-dive profile & SST prompt
           </div>
         </div>
       </div>
@@ -287,7 +360,7 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
               {groups.intensive.length === 0 ? (
                 <div className="text-center py-8 text-xs text-slate-400">
                   <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-50" />
-                  No students in intensive deficit on {activeAssessment.label}.
+                  No students in intensive deficit on this assessment.
                 </div>
               ) : (
                 groups.intensive.map((s) => (
@@ -297,11 +370,11 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
                     className="p-3 rounded-xl border border-rose-200 bg-rose-50/20 hover:bg-rose-50/60 hover:border-rose-400 transition cursor-pointer shadow-2xs"
                   >
                     <div className="flex items-start justify-between gap-1">
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 hover:text-blue-600">
+                      <div className="min-w-0 pr-1">
+                        <div className="text-xs font-bold text-slate-900 hover:text-blue-600 truncate">
                           {s.name}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className="text-[10px] text-slate-400 font-mono truncate">
                           #{s.id} • {s.teacher}
                         </div>
                       </div>
@@ -315,6 +388,12 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
                       </div>
                     </div>
 
+                    {s.evalHistory.length > 1 && (
+                      <div className="text-[9px] text-slate-400 font-mono mt-1 truncate">
+                        Trail: {s.evalHistory.join(' → ')}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap gap-1 mt-2">
                       {s.isEL && (
                         <span className="text-[9px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded">
@@ -323,7 +402,7 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
                       )}
                       {s.isSpEd && (
                         <span className="text-[9px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded">
-                          IEP
+                          SpEd
                         </span>
                       )}
                       {s.is504 && (
@@ -344,7 +423,7 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
           </div>
 
           <div className="p-3 bg-slate-50 border-t border-slate-100 text-center text-[11px] text-slate-400">
-            Suggested Table: Teacher-Led Pull-Out (Daily)
+            Suggested Table: Daily Targeted Pull-Out
           </div>
         </div>
 
@@ -380,11 +459,11 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
                     className="p-3 rounded-xl border border-amber-200 bg-amber-50/20 hover:bg-amber-50/60 hover:border-amber-400 transition cursor-pointer shadow-2xs"
                   >
                     <div className="flex items-start justify-between gap-1">
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 hover:text-blue-600">
+                      <div className="min-w-0 pr-1">
+                        <div className="text-xs font-bold text-slate-900 hover:text-blue-600 truncate">
                           {s.name}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className="text-[10px] text-slate-400 font-mono truncate">
                           #{s.id} • {s.teacher}
                         </div>
                       </div>
@@ -398,6 +477,12 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
                       </div>
                     </div>
 
+                    {s.evalHistory.length > 1 && (
+                      <div className="text-[9px] text-slate-400 font-mono mt-1 truncate">
+                        Trail: {s.evalHistory.join(' → ')}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap gap-1 mt-2">
                       {s.isEL && (
                         <span className="text-[9px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded">
@@ -406,7 +491,7 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
                       )}
                       {s.isSpEd && (
                         <span className="text-[9px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded">
-                          IEP
+                          SpEd
                         </span>
                       )}
                       {s.is504 && (
@@ -422,7 +507,7 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
           </div>
 
           <div className="p-3 bg-slate-50 border-t border-slate-100 text-center text-[11px] text-slate-400">
-            Suggested Table: Guided Small Group (3x/week)
+            Suggested Table: Guided Small Group Routine
           </div>
         </div>
 
@@ -448,7 +533,7 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
             <div className="p-3.5 space-y-2.5 max-h-[600px] overflow-y-auto">
               {groups.benchmark.length === 0 ? (
                 <div className="text-center py-8 text-xs text-slate-400">
-                  No students in benchmark band yet.
+                  No students in benchmark band on this assessment.
                 </div>
               ) : (
                 groups.benchmark.map((s) => (
@@ -458,11 +543,11 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
                     className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/20 hover:bg-emerald-50/60 hover:border-emerald-400 transition cursor-pointer shadow-2xs"
                   >
                     <div className="flex items-start justify-between gap-1">
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 hover:text-blue-600">
+                      <div className="min-w-0 pr-1">
+                        <div className="text-xs font-bold text-slate-900 hover:text-blue-600 truncate">
                           {s.name}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className="text-[10px] text-slate-400 font-mono truncate">
                           #{s.id} • {s.teacher}
                         </div>
                       </div>
@@ -493,7 +578,7 @@ ${groups.benchmark.map(s => `- ${s.name} (${s.evalDisplay}, ${s.evalPercent}%)`)
           </div>
 
           <div className="p-3 bg-slate-50 border-t border-slate-100 text-center text-[11px] text-slate-400">
-            Suggested Table: Independent & Peer Extension
+            Suggested Table: Independent & Extension
           </div>
         </div>
 

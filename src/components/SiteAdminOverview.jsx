@@ -55,10 +55,39 @@ export default function SiteAdminOverview({
   const tier3InterventionStudents = siteStudents.filter(s => s.hasTier3Phonics || s.hasYoYDecline);
   const tier3Count = tier3InterventionStudents.length;
 
-  // Grade-Level Breakdown Matrix
-  const grades = [1, 2, 3, 4, 5];
-  const gradeMatrix = grades.map(g => {
-    const inGrade = siteStudents.filter(s => s.grade === g);
+  // Dynamic Grade-Level Breakdown Matrix
+  const rawGrades = Array.from(
+    new Set(siteStudents.map(s => s.gradeStr || (s.grade !== undefined ? `${s.grade}` : '')).filter(Boolean))
+  );
+
+  const gradeSortOrder = {
+    'TK': 0, 'TOTS': 0, 'K': 0.5, '0': 0.5,
+    '1ST': 1, '1': 1,
+    '2ND': 2, '2': 2,
+    '3RD': 3, '3': 3,
+    '4TH': 4, '4': 4,
+    '5TH': 5, '5': 5
+  };
+
+  const sortedGrades = rawGrades.length > 0
+    ? rawGrades.sort((a, b) => {
+        const aVal = gradeSortOrder[a.toUpperCase()] ?? (parseInt(a, 10) || 99);
+        const bVal = gradeSortOrder[b.toUpperCase()] ?? (parseInt(b, 10) || 99);
+        return aVal - bVal;
+      })
+    : ['1st', '2nd', '3rd', '4th', '5th'];
+
+  const gradeMatrix = sortedGrades.map(g => {
+    const gNum = parseInt(g, 10);
+    const inGrade = siteStudents.filter(s =>
+      s.gradeStr === g ||
+      `${s.grade}` === g ||
+      (gNum && s.grade === gNum) ||
+      `${s.grade}th` === g.toLowerCase() ||
+      `${s.grade}st` === g.toLowerCase() ||
+      `${s.grade}nd` === g.toLowerCase() ||
+      `${s.grade}rd` === g.toLowerCase()
+    );
     const count = inGrade.length;
     const bmCount = inGrade.filter(s => s.isBenchmark).length;
     const bmPct = count > 0 ? Math.round((bmCount / count) * 100) : 0;
@@ -68,9 +97,9 @@ export default function SiteAdminOverview({
     const t3InGrade = inGrade.filter(s => s.hasTier3Phonics).length;
 
     // Distinct teachers in this grade
-    const teachers = Array.from(new Set(inGrade.map(s => s.teacher))).filter(Boolean);
+    const teachers = Array.from(new Set(inGrade.map(s => s.teacher || s.teacherName))).filter(Boolean);
     const teacherData = teachers.map(tName => {
-      const inClass = inGrade.filter(s => s.teacher === tName);
+      const inClass = inGrade.filter(s => s.teacher === tName || s.teacherName === tName);
       const cCount = inClass.length;
       const cBm = inClass.filter(s => s.isBenchmark).length;
       const cBmPct = cCount > 0 ? Math.round((cBm / cCount) * 100) : 0;
@@ -109,11 +138,14 @@ export default function SiteAdminOverview({
     let benchmarkCount = 0;
 
     siteStudents.forEach(s => {
-      const p = s.phonics.find(item => item.id === subtest.id);
-      if (p && p.score !== null) {
-        totalScore += p.score;
+      const p = (s.phonics || []).find(item => item.id === subtest.id || subtest.match?.test(item.header || item.name))
+        || (s.allParsedColumns || []).find(c => subtest.match?.test(c.header || c.family));
+      
+      const score = p ? (p.score !== undefined ? p.score : p.parsed?.latestNumeric) : null;
+      if (score !== null && score !== undefined && !isNaN(score)) {
+        totalScore += Number(score);
         assessedCount += 1;
-        if (p.score >= subtest.benchmark) benchmarkCount += 1;
+        if (Number(score) >= subtest.benchmark) benchmarkCount += 1;
       }
     });
 
@@ -339,8 +371,8 @@ export default function SiteAdminOverview({
                         <span className="w-6 h-6 rounded-md bg-blue-100 text-blue-800 flex items-center justify-center font-extrabold text-xs">
                           {g.grade}
                         </span>
-                        <span>Grade {g.grade} Overview</span>
-                        {g.grade === 3 && (
+                        <span>{String(g.grade).toLowerCase().includes('grade') || String(g.grade).toUpperCase() === 'K' || String(g.grade).toUpperCase() === 'TK' ? `${g.grade}` : `Grade ${g.grade}`} Overview</span>
+                        {(g.grade === 3 || g.grade === '3rd' || g.grade === '3') && (
                           <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase">
                             Primary Focus
                           </span>
