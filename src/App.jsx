@@ -17,14 +17,12 @@ import { parseStudentRecord, findTeacherForUser } from './utils/dataParser';
 
 import { 
   ShieldAlert, 
-  ShieldCheck, 
   Lock, 
   AlertOctagon,
   RefreshCw,
   ExternalLink,
   Loader2,
-  Database,
-  User
+  Database
 } from 'lucide-react';
 
 // Decode Google JWT token safely in browser
@@ -283,6 +281,7 @@ export default function App() {
             });
           }
 
+          // Trigger Google One-Tap / ChromeOS Staff automatic sign-in prompt
           window.google.accounts.id.prompt();
         } catch (err) {
           console.warn('GSI Initialization notice:', err);
@@ -300,31 +299,6 @@ export default function App() {
 
     return () => clearInterval(timer);
   }, [user, handleAuthSuccess]);
-
-  // Dev Bypass (Super-Admin or Classroom Teacher)
-  const handleDevBypass = (presetEmail = SUPER_ADMIN_EMAIL, presetRole = 'SUPER ADMIN', presetName = '') => {
-    const isSuper = presetRole === 'SUPER ADMIN';
-    const mockUser = {
-      email: presetEmail,
-      name: presetName || (presetEmail === SUPER_ADMIN_EMAIL ? 'Kurt Wendland (Super-Admin)' : presetEmail.split('@')[0]),
-      picture: null,
-      role: presetRole,
-      isSuperAdmin: isSuper,
-      id_token: 'dev-bypass-token'
-    };
-
-    sessionStorage.setItem('wvusd_staff_token', mockUser.id_token);
-    sessionStorage.setItem('wvusd_staff_user', JSON.stringify(mockUser));
-
-    hasAppliedInitialViewRef.current = false;
-    setUser(mockUser);
-    setCurrentRole(presetRole);
-    setAuthError(null);
-
-    // In dev bypass mode, request GAS with SUPER_ADMIN_EMAIL so GAS authorizes the fetch,
-    // while passing mockUser to apply the user's role and teacher matching
-    fetchLiveData(SUPER_ADMIN_EMAIL, mockUser);
-  };
 
   // Sign Out
   const handleSignOut = () => {
@@ -457,20 +431,6 @@ export default function App() {
               >
                 Sign In with Official WVUSD Staff Account
               </button>
-
-              <button
-                onClick={() => handleDevBypass(SUPER_ADMIN_EMAIL, 'SUPER ADMIN')}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
-              >
-                Super-Admin Dev Bypass ({SUPER_ADMIN_EMAIL})
-              </button>
-
-              <button
-                onClick={() => handleDevBypass('mschweder@wvusd.org', 'CLASSROOM TEACHER', 'Megan Schweder')}
-                className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition"
-              >
-                Teacher Dev Bypass (mschweder@wvusd.org - Castle Rock Elementary)
-              </button>
             </div>
           </div>
         </div>
@@ -509,37 +469,8 @@ export default function App() {
               {/* Rendered Google GSI Button Container */}
               <div id="gsi-signin-container" className="flex justify-center min-h-[44px]" />
 
-              <div className="relative flex py-1 items-center">
-                <div className="flex-grow border-t border-slate-200"></div>
-                <span className="flex-shrink mx-4 text-slate-400 text-[11px] uppercase font-bold tracking-wider">
-                  Live Data Connection
-                </span>
-                <div className="flex-grow border-t border-slate-200"></div>
-              </div>
-
-              {/* Dev Bypass Buttons */}
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => handleDevBypass(SUPER_ADMIN_EMAIL, 'SUPER ADMIN')}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 shadow-2xs transition transform hover:-translate-y-0.5"
-                >
-                  <ShieldCheck className="w-4 h-4 text-purple-600" />
-                  <span>Super-Admin Dev Bypass ({SUPER_ADMIN_EMAIL})</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleDevBypass('mschweder@wvusd.org', 'CLASSROOM TEACHER', 'Megan Schweder')}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 shadow-2xs transition transform hover:-translate-y-0.5"
-                >
-                  <User className="w-4 h-4 text-blue-600" />
-                  <span>Teacher Dev Bypass (mschweder@wvusd.org - Castle Rock Elementary)</span>
-                </button>
-              </div>
-
-              <div className="text-[11px] text-slate-400 pt-1">
-                Domain locked to <strong className="text-slate-600">@wvusd.org</strong> and <strong className="text-slate-600">@sub.wvusd.org</strong>
+              <div className="text-xs text-slate-500 pt-3 border-t border-slate-100 leading-relaxed">
+                Access restricted to authenticated <strong className="text-slate-700">@wvusd.org</strong> and <strong className="text-slate-700">@sub.wvusd.org</strong> staff accounts
               </div>
             </div>
 
