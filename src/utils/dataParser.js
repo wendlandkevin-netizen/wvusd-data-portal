@@ -90,7 +90,10 @@ export function parseMultiAttempt(cellValue) {
 
 /**
  * Compares two scores (previous vs current) to compute Year-over-Year Growth Badge.
- * Returns: { status: 'growth'|'steady'|'decline'|'unknown', badge: string, color: string, delta: number|null, description: string }
+ * What constitutes a decline:
+ * - A negative delta (curr - prev) exceeding -0.05 (e.g. dropping from 3.4 to 2.9, or 85% to 75%).
+ * - The 0.05 threshold acts as a tolerance filter so micro-rounding or test noise does not false-flag.
+ * Returns: { status: 'growth'|'steady'|'decline'|'unknown', badge: string, color: string, delta: number|null, percentChange: number|null, description: string }
  */
 export function computeYoYGrowth(prevValue, currValue) {
   const prevParsed = typeof prevValue === 'object' && prevValue?.latest !== undefined ? prevValue : parseMultiAttempt(prevValue);
@@ -105,28 +108,40 @@ export function computeYoYGrowth(prevValue, currValue) {
       badge: '⚪ Baseline Only',
       color: 'slate',
       delta: null,
+      percentChange: null,
+      prevScore: prev,
+      currScore: curr,
       description: curr !== null ? `Current: ${currParsed.latest}` : 'Insufficient YoY data'
     };
   }
 
   const delta = Number((curr - prev).toFixed(2));
+  const percentChange = prev !== 0 ? Number((((curr - prev) / Math.abs(prev)) * 100).toFixed(1)) : null;
 
   // Threshold: +/- 0.05
   if (delta > 0.05) {
+    const pctStr = percentChange !== null ? ` (+${percentChange}%)` : '';
     return {
       status: 'growth',
       badge: '🟢 Growth',
       color: 'emerald',
       delta,
-      description: `+${delta} gain (${prevParsed.latest} → ${currParsed.latest})`
+      percentChange,
+      prevScore: prev,
+      currScore: curr,
+      description: `+${delta} gain${pctStr} (${prevParsed.latest} → ${currParsed.latest})`
     };
   } else if (delta < -0.05) {
+    const pctStr = percentChange !== null ? ` (${percentChange}%)` : '';
     return {
       status: 'decline',
       badge: '🔴 Decline',
       color: 'rose',
       delta,
-      description: `${delta} decline (${prevParsed.latest} → ${currParsed.latest})`
+      percentChange,
+      prevScore: prev,
+      currScore: curr,
+      description: `${delta} decline${pctStr} (${prevParsed.latest} → ${currParsed.latest})`
     };
   } else {
     return {
@@ -134,6 +149,9 @@ export function computeYoYGrowth(prevValue, currValue) {
       badge: '🟡 Steady',
       color: 'amber',
       delta: 0,
+      percentChange: 0,
+      prevScore: prev,
+      currScore: curr,
       description: `Maintained (${prevParsed.latest} → ${currParsed.latest})`
     };
   }
@@ -229,16 +247,49 @@ export function parseStudentRecord(raw) {
   const teacher = String(raw.teacherName || raw.teacher || raw['Teacher Name'] || 'Unassigned');
   const teacherEmail = raw.teacherEmail || '';
 
-  // Demographic & Special Program Flags
+  // Demographic & Language Proficiency Types (Authoritative from Roster!j:j / flags.elStatus)
+  // California & WVUSD 3 Primary Language Classifications:
+  // 1. EL / LEP (Active English Learner): Needs ELD instruction & ELPAC tracking
+  // 2. RFEP (Redesignated Fluent English Proficient): Former EL who met reclassification criteria
+  // 3. IFEP (Initially Fluent English Proficient): Fluent on initial enrollment
+  // Demographic & Language Proficiency Types (Authoritative from Roster!j:j / flags.elStatus)
+  // California & WVUSD Primary Language Classifications:
+  // 1. EL / LEP (Active English Learner): Strictly the ONLY students counted in "EL Count"
+  // 2. Redesignated (RFEP): Monitored, NOT counted in EL Count, but tagged for teacher awareness
+  // 3. Initially Fluent (IFEP): Fluent upon enrollment, NOT counted in EL Count, but tagged for teacher awareness
+  // 4. English Only (EO): Native English speakers
   const elRaw = String(raw.flags?.elStatus || raw.elStatus || raw['EL Status'] || '').trim();
-  const isEL = Boolean(
-    elRaw &&
-    !elRaw.toLowerCase().includes('english only') &&
-    !elRaw.toLowerCase().includes('eo') &&
-    elRaw !== 'N' &&
-    elRaw !== 'No'
-  );
-  const elLevel = isEL ? elRaw : null;
+  const lowerEl = elRaw.toLowerCase();
+
+  let elType = 'EO';
+  let elLabel = 'English Only';
+
+  if (lowerEl.includes('redesignated') || lowerEl === 'rfep') {
+    elType = 'RFEP';
+    elLabel = 'Redesignated (RFEP)';
+  } else if (lowerEl.includes('initially fluent') || lowerEl === 'ifep') {
+    elType = 'IFEP';
+    elLabel = 'Initially Fluent (IFEP)';
+  } else if (lowerEl === 'lep' || lowerEl.includes('limited') || lowerEl.includes('learner') || lowerEl === 'el') {
+    elType = 'EL';
+    elLabel = 'Active EL (LEP)';
+  } else if (lowerEl.includes('determined') || lowerEl === 'tbd') {
+    elType = 'TBD';
+    elLabel = 'To Be Determined (TBD)';
+  } else if (lowerEl.includes('english only') || lowerEl === 'eo') {
+    elType = 'EO';
+    elLabel = 'English Only';
+  } else if (elRaw) {
+    elType = 'EO';
+    elLabel = elRaw;
+  }
+
+  // Strict Rule: isEL is true ONLY for active LEP students (Redesignated students are excluded from the count)
+  const isEL = elType === 'EL';
+  const isLEP = isEL;
+  const isRFEP = elType === 'RFEP';
+  const isIFEP = elType === 'IFEP';
+  const elLevel = isEL ? 'LEP' : (elType !== 'EO' ? elType : null);
 
   const spedRaw = String(raw.flags?.sped || raw.sped || raw['SpEd'] || '').trim();
   const isSpEd = Boolean(
@@ -425,6 +476,11 @@ export function parseStudentRecord(raw) {
     teacherName: teacher,
     teacherEmail,
     isEL,
+    isLEP,
+    isRFEP,
+    isIFEP,
+    elType,
+    elLabel,
     elLevel,
     isSpEd,
     spedType,
@@ -477,7 +533,9 @@ export function generateSSTPrompt(student) {
     .join('\n');
 
   const programs = [];
-  if (student.isEL) programs.push(`English Learner (${student.elLevel || 'EL'})`);
+  if (student.isEL) programs.push(`Active English Learner (LEP)`);
+  else if (student.isRFEP) programs.push(`Redesignated Fluent English Proficient (RFEP)`);
+  else if (student.isIFEP) programs.push(`Initially Fluent English Proficient (IFEP)`);
   if (student.isSpEd) programs.push(`Special Education (${student.spedType || 'IEP'})`);
   if (student.is504) programs.push(`Section 504 Plan`);
   if (student.isFosterHomeless) programs.push(`Foster / Homeless Youth Support`);

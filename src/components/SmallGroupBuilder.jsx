@@ -201,17 +201,17 @@ Generated: ${new Date().toLocaleDateString()}
 🔴 TIER 3: INTENSIVE NEEDS (<60%) [Count: ${groups.intensive.length}]
 Instructional Focus: ${getFocusRoutine('intensive')}
 Students:
-${groups.intensive.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.isEL ? '[EL]' : ''} ${s.isSpEd ? '[IEP]' : ''}`).join('\n') || 'None'}
+${groups.intensive.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.elType && s.elType !== 'EO' ? `[${s.elType}]` : ''} ${s.isSpEd ? '[IEP]' : ''}`).join('\n') || 'None'}
 
 🟡 TIER 2: STRATEGIC SUPPORT (60-79%) [Count: ${groups.strategic.length}]
 Instructional Focus: ${getFocusRoutine('strategic')}
 Students:
-${groups.strategic.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.isEL ? '[EL]' : ''} ${s.isSpEd ? '[IEP]' : ''}`).join('\n') || 'None'}
+${groups.strategic.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.elType && s.elType !== 'EO' ? `[${s.elType}]` : ''} ${s.isSpEd ? '[IEP]' : ''}`).join('\n') || 'None'}
 
 🟢 TIER 1: BENCHMARK (80%+) [Count: ${groups.benchmark.length}]
 Instructional Focus: ${getFocusRoutine('benchmark')}
 Students:
-${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%]`).join('\n') || 'None'}
+${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${s.evalPercent}%] ${s.elType && s.elType !== 'EO' ? `[${s.elType}]` : ''}`).join('\n') || 'None'}
 `;
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -396,8 +396,18 @@ ${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${
 
                     <div className="flex flex-wrap gap-1 mt-2">
                       {s.isEL && (
-                        <span className="text-[9px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded">
+                        <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded">
                           EL
+                        </span>
+                      )}
+                      {s.isRFEP && (
+                        <span className="text-[9px] font-bold bg-teal-100 text-teal-800 px-1.5 py-0.2 rounded">
+                          RFEP
+                        </span>
+                      )}
+                      {s.isIFEP && (
+                        <span className="text-[9px] font-bold bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded">
+                          IFEP
                         </span>
                       )}
                       {s.isSpEd && (
@@ -485,8 +495,18 @@ ${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${
 
                     <div className="flex flex-wrap gap-1 mt-2">
                       {s.isEL && (
-                        <span className="text-[9px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded">
+                        <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded">
                           EL
+                        </span>
+                      )}
+                      {s.isRFEP && (
+                        <span className="text-[9px] font-bold bg-teal-100 text-teal-800 px-1.5 py-0.2 rounded">
+                          RFEP
+                        </span>
+                      )}
+                      {s.isIFEP && (
+                        <span className="text-[9px] font-bold bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded">
+                          IFEP
                         </span>
                       )}
                       {s.isSpEd && (
@@ -563,8 +583,18 @@ ${groups.benchmark.map(s => `- ${s.name} (#${s.id}) [Score: ${s.evalDisplay}, ${
 
                     <div className="flex flex-wrap gap-1 mt-2">
                       {s.isEL && (
-                        <span className="text-[9px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded">
+                        <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded">
                           EL
+                        </span>
+                      )}
+                      {s.isRFEP && (
+                        <span className="text-[9px] font-bold bg-teal-100 text-teal-800 px-1.5 py-0.2 rounded">
+                          RFEP
+                        </span>
+                      )}
+                      {s.isIFEP && (
+                        <span className="text-[9px] font-bold bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded">
+                          IFEP
                         </span>
                       )}
                       <span className="text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded">

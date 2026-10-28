@@ -39,6 +39,12 @@ export default function SiteAdminOverview({
   const elCount = elStudents.length;
   const elPct = totalCount > 0 ? Math.round((elCount / totalCount) * 100) : 0;
 
+  const rfepStudents = siteStudents.filter(s => s.isRFEP);
+  const rfepCount = rfepStudents.length;
+
+  const ifepStudents = siteStudents.filter(s => s.isIFEP);
+  const ifepCount = ifepStudents.length;
+
   const sped504Students = siteStudents.filter(s => s.isSpEd || s.is504);
   const sped504Count = sped504Students.length;
 
@@ -202,7 +208,7 @@ export default function SiteAdminOverview({
               className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition transform hover:-translate-y-0.5"
             >
               <Languages className="w-4 h-4" />
-              <span>View All Site EL Students ({elCount})</span>
+              <span>View Active EL Students ({elCount} LEP)</span>
             </button>
 
             <button
@@ -259,10 +265,11 @@ export default function SiteAdminOverview({
           </div>
         </div>
 
-        {/* YoY Regression */}
+        {/* YoY Regression / Decline */}
         <div 
           onClick={() => onDrilldown({ filter: '🔴 YoY Decline' })}
           className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/30 shadow-2xs hover:shadow-xs hover:border-rose-400 transition cursor-pointer group"
+          title="Constitutes a decline: Current score dropped below prior year score by > 0.05 on STAR, Amira, or Math benchmarks. % regressed is the proportion of students with ≥1 declining metric."
         >
           <div className="flex items-center justify-between text-rose-700 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">YoY Decline</span>
@@ -270,24 +277,27 @@ export default function SiteAdminOverview({
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-rose-600">{regressionCount}</div>
           <div className="text-[11px] text-rose-600/80 mt-1 flex items-center justify-between">
-            <span>{regressionPct}% regressed</span>
+            <span>{regressionPct}% of site (drop &gt; 0.05)</span>
             <ChevronRight className="w-3.5 h-3.5 text-rose-500 opacity-0 group-hover:opacity-100 transition" />
           </div>
         </div>
 
-        {/* English Learners */}
+        {/* Language Proficiency: EL Count (LEP Only) */}
         <div 
           onClick={() => onDrilldown({ filter: 'EL' })}
-          className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs hover:border-blue-300 transition cursor-pointer group"
+          className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs hover:border-amber-300 transition cursor-pointer group"
+          title="EL Count strictly counts Active LEP students. Redesignated (RFEP) students are monitored separately and excluded from this count."
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-blue-600 transition">English Learners</span>
-            <Languages className="w-4 h-4 text-blue-600" />
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-amber-600 transition">EL Count (LEP)</span>
+            <Languages className="w-4 h-4 text-amber-600" />
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-blue-700">{elCount}</div>
-          <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
-            <span>{elPct}% of school</span>
-            <ChevronRight className="w-3.5 h-3.5 text-blue-500 opacity-0 group-hover:opacity-100 transition" />
+          <div className="text-2xl sm:text-3xl font-extrabold text-amber-600">
+            {elCount} <span className="text-xs font-bold uppercase text-slate-500">LEP ({elPct}%)</span>
+          </div>
+          <div className="text-[10px] text-slate-500 mt-1 flex items-center justify-between">
+            <span>RFEP: {rfepCount} (excluded) • IFEP: {ifepCount}</span>
+            <ChevronRight className="w-3.5 h-3.5 text-amber-500 opacity-0 group-hover:opacity-100 transition" />
           </div>
         </div>
 
@@ -354,7 +364,7 @@ export default function SiteAdminOverview({
                   <th className="py-3 px-3 text-center">% Benchmark</th>
                   <th className="py-3 px-3 text-center">YoY Growth</th>
                   <th className="py-3 px-3 text-center">YoY Decline</th>
-                  <th className="py-3 px-3 text-center">EL Count</th>
+                  <th className="py-3 px-3 text-center" title="Active LEP students only (Redesignated students are excluded)">EL (LEP) Count</th>
                   <th className="py-3 px-3 text-center">Tier 3 Needs</th>
                   <th className="py-3 px-3 text-center">Action</th>
                 </tr>

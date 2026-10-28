@@ -32,10 +32,12 @@ export default function TeacherDashboard({
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
   const [visibleCount, setVisibleCount] = useState(60);
 
-  // Filter criteria options
+  // Filter criteria options (includes all 3 language proficiency types from Roster!j:j)
   const filterPills = [
     { id: 'All', label: 'All Students' },
-    { id: 'EL', label: 'English Learners (EL)' },
+    { id: 'EL', label: 'EL (Active LEP)' },
+    { id: 'RFEP', label: 'RFEP (Redesignated)' },
+    { id: 'IFEP', label: 'IFEP (Initially Fluent)' },
     { id: 'SpEd', label: 'Special Ed (IEP)' },
     { id: '504', label: '504 Plan' },
     { id: 'Foster/Homeless', label: 'Foster / Homeless' },
@@ -81,6 +83,8 @@ export default function TeacherDashboard({
 
     // Active filter pill
     if (activeFilter === 'EL' && !s.isEL) return false;
+    if (activeFilter === 'RFEP' && !s.isRFEP) return false;
+    if (activeFilter === 'IFEP' && !s.isIFEP) return false;
     if (activeFilter === 'SpEd' && !s.isSpEd) return false;
     if (activeFilter === '504' && !s.is504) return false;
     if (activeFilter === 'Foster/Homeless' && !s.isFosterHomeless) return false;
@@ -285,8 +289,18 @@ export default function TeacherDashboard({
                   {/* Program Badges & Matched Sheet Tabs */}
                   <div className="flex flex-wrap items-center gap-1 mt-2.5">
                     {student.isEL && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                        EL: {student.elLevel || 'EL'}
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        EL (LEP)
+                      </span>
+                    )}
+                    {student.isRFEP && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 border border-teal-200" title="Redesignated Fluent English Proficient (Monitored)">
+                        Redesignated (RFEP)
+                      </span>
+                    )}
+                    {student.isIFEP && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200" title="Initially Fluent English Proficient">
+                        Initially Fluent (IFEP)
                       </span>
                     )}
                     {student.isSpEd && (
@@ -440,8 +454,18 @@ export default function TeacherDashboard({
                     <td className="py-3 px-3">
                       <div className="flex flex-wrap gap-1 max-w-[120px]">
                         {s.isEL && (
-                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
                             EL
+                          </span>
+                        )}
+                        {s.isRFEP && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-teal-100 text-teal-800">
+                            RFEP
+                          </span>
+                        )}
+                        {s.isIFEP && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-sky-100 text-sky-800">
+                            IFEP
                           </span>
                         )}
                         {s.isSpEd && (

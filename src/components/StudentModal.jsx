@@ -117,9 +117,21 @@ export default function StudentModal({
           {/* Program Badges Strip */}
           <div className="flex flex-wrap items-center gap-1.5 mt-4 pt-3 border-t border-white/10">
             {student.isEL && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-200 border border-blue-400/40">
-                <Languages className="w-3.5 h-3.5 text-blue-300" />
-                EL Status: {student.elLevel || 'English Learner'}
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/25 text-amber-200 border border-amber-400/40">
+                <Languages className="w-3.5 h-3.5 text-amber-300" />
+                Language: {student.elLabel || 'Active English Learner (LEP)'}
+              </span>
+            )}
+            {student.isRFEP && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-500/25 text-teal-200 border border-teal-400/40">
+                <Languages className="w-3.5 h-3.5 text-teal-300" />
+                Language: {student.elLabel || 'RFEP (Redesignated Fluent)'}
+              </span>
+            )}
+            {student.isIFEP && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-500/25 text-sky-200 border border-sky-400/40">
+                <Languages className="w-3.5 h-3.5 text-sky-300" />
+                Language: {student.elLabel || 'IFEP (Initially Fluent)'}
               </span>
             )}
             {student.isSpEd && (
