@@ -686,3 +686,106 @@ REQUEST FOR WVUSD SST NOTEBOOKLM:
 4. Include scaffolding accommodations specifically tailored for ${student.isEL ? 'English Learner language acquisition' : 'accommodating multimodal learning needs'}.
 `;
 }
+
+/**
+ * Resolves teacher profile and assigned student roster based on staff email and name.
+ * 
+ * Hierarchy:
+ * 1. Exact match on student.teacherEmail (case-insensitive)
+ * 2. Prefix / username match on student.teacherEmail (e.g., "mschweder" from "mschweder@wvusd.org")
+ * 3. Name match against teacherName formatted as "LastName, FirstName" or "LastName, FirstInitial"
+ * 4. Google profile name match (first + last name against teacher name)
+ * 
+ * Returns: { teacherName, school, grade, studentCount, matchedBy } | null
+ */
+export function findTeacherForUser(email, name = '', studentsList = []) {
+  if (!email && !name) return null;
+  const cleanEmail = String(email || '').toLowerCase().trim();
+  const emailPrefix = cleanEmail.includes('@') ? cleanEmail.split('@')[0].toLowerCase() : cleanEmail;
+
+  if (!studentsList || studentsList.length === 0) return null;
+
+  // 1. Direct match on student.teacherEmail
+  if (cleanEmail) {
+    const directMatches = studentsList.filter(s => 
+      s.teacherEmail && s.teacherEmail.toLowerCase().trim() === cleanEmail
+    );
+    if (directMatches.length > 0) {
+      const first = directMatches[0];
+      return {
+        teacherName: first.teacher,
+        school: first.school || first.site || 'ALL',
+        grade: first.gradeStr || `${first.grade}` || 'ALL',
+        studentCount: directMatches.length,
+        matchedBy: 'email'
+      };
+    }
+  }
+
+  // 2. Prefix match on student.teacherEmail (e.g. "mschweder")
+  if (emailPrefix) {
+    const prefixMatches = studentsList.filter(s => {
+      if (!s.teacherEmail) return false;
+      const p = s.teacherEmail.split('@')[0].toLowerCase().trim();
+      return p === emailPrefix;
+    });
+    if (prefixMatches.length > 0) {
+      const first = prefixMatches[0];
+      return {
+        teacherName: first.teacher,
+        school: first.school || first.site || 'ALL',
+        grade: first.gradeStr || `${first.grade}` || 'ALL',
+        studentCount: prefixMatches.length,
+        matchedBy: 'emailPrefix'
+      };
+    }
+  }
+
+  // 3. Match email prefix to teacher name string
+  // E.g., emailPrefix "mschweder" or "schweder" against teacher "Schweder, Megan"
+  if (emailPrefix) {
+    const cleanPrefix = emailPrefix.replace(/[^a-z]/g, '');
+    const teacherMatches = studentsList.filter(s => {
+      if (!s.teacher || s.teacher === 'Unassigned') return false;
+      const tLower = s.teacher.toLowerCase().replace(/[^a-z]/g, '');
+      return tLower.includes(cleanPrefix) || (cleanPrefix.length > 3 && tLower.includes(cleanPrefix.slice(1)));
+    });
+    if (teacherMatches.length > 0) {
+      const first = teacherMatches[0];
+      return {
+        teacherName: first.teacher,
+        school: first.school || first.site || 'ALL',
+        grade: first.gradeStr || `${first.grade}` || 'ALL',
+        studentCount: teacherMatches.length,
+        matchedBy: 'nameFromEmail'
+      };
+    }
+  }
+
+  // 4. Fuzzy match using Google profile user name (e.g. "Megan Schweder")
+  if (name && name.trim()) {
+    const parts = name.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      const firstName = parts[0];
+      const lastName = parts[parts.length - 1];
+      const nameMatches = studentsList.filter(s => {
+        if (!s.teacher || s.teacher === 'Unassigned') return false;
+        const tLower = s.teacher.toLowerCase();
+        return tLower.includes(lastName) && (tLower.includes(firstName) || tLower.includes(firstName[0]));
+      });
+      if (nameMatches.length > 0) {
+        const first = nameMatches[0];
+        return {
+          teacherName: first.teacher,
+          school: first.school || first.site || 'ALL',
+          grade: first.gradeStr || `${first.grade}` || 'ALL',
+          studentCount: nameMatches.length,
+          matchedBy: 'googleProfileName'
+        };
+      }
+    }
+  }
+
+  return null;
+}
+

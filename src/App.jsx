@@ -13,7 +13,7 @@ import {
   isValidStaffEmail,
   GAS_WEB_APP_URL
 } from './config/constants';
-import { parseStudentRecord } from './utils/dataParser';
+import { parseStudentRecord, findTeacherForUser } from './utils/dataParser';
 
 import { 
   ShieldAlert, 
@@ -23,7 +23,8 @@ import {
   RefreshCw,
   ExternalLink,
   Loader2,
-  Database
+  Database,
+  User
 } from 'lucide-react';
 
 // Decode Google JWT token safely in browser
@@ -86,16 +87,65 @@ export default function App() {
   // Current Role Preview (Super Admin can switch role perspective)
   const [currentRole, setCurrentRole] = useState(() => user?.role || 'SUPER ADMIN');
 
+  // Maintain reference to current user for async callbacks
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  // Track if initial view and teacher routing have been applied for this session
+  const hasAppliedInitialViewRef = useRef(false);
+
+  // Automatically default Classroom Teachers to Classroom Teacher View with their roster
+  const applyInitialRoutingAndFilters = useCallback((currentUser, parsedStudentsList, apiUserData) => {
+    if (!currentUser || !parsedStudentsList || parsedStudentsList.length === 0) return;
+    if (hasAppliedInitialViewRef.current) return;
+    hasAppliedInitialViewRef.current = true;
+
+    const teacherMatch = findTeacherForUser(currentUser.email, currentUser.name, parsedStudentsList);
+    const isClassroomTeacher = currentUser.role === 'CLASSROOM TEACHER' || 
+      (!currentUser.isSuperAdmin && currentUser.role !== 'SITE ADMIN / SPECIALIST');
+
+    if (isClassroomTeacher) {
+      // 1. Default first page to Classroom Teacher View
+      setActiveView('teacher');
+
+      if (teacherMatch) {
+        // 2. Default teacher filter to their roster
+        setSelectedTeacher(teacherMatch.teacherName);
+        // 3. Default school filter to their assigned school site
+        if (teacherMatch.school && teacherMatch.school !== 'ALL') {
+          setSelectedSchool(teacherMatch.school);
+        }
+        console.info(`[WVUSD Portal] Recognized Classroom Teacher (${teacherMatch.matchedBy}): ${teacherMatch.teacherName} at ${teacherMatch.school} (${teacherMatch.studentCount} students)`);
+      } else {
+        console.info('[WVUSD Portal] Staff role is Classroom Teacher, defaulting first page to Classroom Teacher View.');
+      }
+    } else if (currentUser.role === 'SITE ADMIN / SPECIALIST') {
+      // Site Admin / Specialist: Default to School Executive Overview for their assigned site
+      setActiveView('overview');
+      setSelectedTeacher('ALL');
+      if (apiUserData?.assignedSites && apiUserData.assignedSites.length > 0 && apiUserData.assignedSites[0] !== 'ALL') {
+        setSelectedSchool(apiUserData.assignedSites[0]);
+      }
+    } else {
+      // Super Admin: Default to School Executive Overview across all sites
+      setActiveView('overview');
+      setSelectedTeacher('ALL');
+      setSelectedSchool('ALL');
+    }
+  }, []);
+
   // Fetch live data from Google Apps Script Web App
   // Plain fetch with redirect: 'follow' and NO custom headers (prevents CORS preflight failures on 302 redirects)
-  const fetchLiveData = useCallback(async (tokenOrEmail) => {
+  const fetchLiveData = useCallback(async (tokenOrEmail, overrideUser = null) => {
     setIsLoading(true);
     setFetchError(null);
 
     let url = GAS_WEB_APP_URL;
-    if (tokenOrEmail && typeof tokenOrEmail === 'string' && tokenOrEmail.includes('@')) {
+    if (tokenOrEmail && typeof tokenOrEmail === 'string' && tokenOrEmail.includes('@') && tokenOrEmail === SUPER_ADMIN_EMAIL) {
       url += `?test_email=${encodeURIComponent(tokenOrEmail)}`;
-    } else if (tokenOrEmail && typeof tokenOrEmail === 'string') {
+    } else if (tokenOrEmail && typeof tokenOrEmail === 'string' && tokenOrEmail.length > 40 && !tokenOrEmail.includes('@')) {
       url += `?id_token=${encodeURIComponent(tokenOrEmail)}`;
     } else {
       url += `?test_email=${encodeURIComponent(SUPER_ADMIN_EMAIL)}`;
@@ -128,10 +178,9 @@ export default function App() {
       setStudents(parsedStudents);
       setMeta(data.meta || {});
 
-      // Automatically set default school if assigned to specific site
-      if (data.user?.assignedSites && data.user.assignedSites.length > 0 && data.user.assignedSites[0] !== 'ALL') {
-        setSelectedSchool(data.user.assignedSites[0]);
-      }
+      // Apply initial view and teacher matching based on the active user
+      const activeUser = overrideUser || userRef.current;
+      applyInitialRoutingAndFilters(activeUser, parsedStudents, data.user);
 
       setIsLoading(false);
     } catch (err) {
@@ -139,7 +188,7 @@ export default function App() {
       setFetchError(err.message || 'Failed to fetch live data from Google Apps Script');
       setIsLoading(false);
     }
-  }, []);
+  }, [applyInitialRoutingAndFilters]);
 
   // Handle successful Google GSI authentication
   const handleAuthSuccess = useCallback((token, decodedUser) => {
@@ -177,13 +226,14 @@ export default function App() {
     sessionStorage.setItem('wvusd_staff_token', token);
     sessionStorage.setItem('wvusd_staff_user', JSON.stringify(authUserData));
 
+    hasAppliedInitialViewRef.current = false;
     setUser(authUserData);
     setCurrentRole(role);
     setAuthError(null);
     setBlockedEmail('');
 
-    // Trigger live fetch with authenticated token
-    fetchLiveData(token);
+    // Trigger live fetch with authenticated token and user profile
+    fetchLiveData(token, authUserData);
   }, [fetchLiveData]);
 
   const hasInitialFetchedRef = useRef(false);
@@ -193,7 +243,7 @@ export default function App() {
     if (user && !hasInitialFetchedRef.current) {
       hasInitialFetchedRef.current = true;
       const cachedToken = sessionStorage.getItem('wvusd_staff_token');
-      fetchLiveData(cachedToken || user.email || SUPER_ADMIN_EMAIL);
+      fetchLiveData(cachedToken || user.email || SUPER_ADMIN_EMAIL, user);
     }
   }, [fetchLiveData, user]);
 
@@ -251,26 +301,29 @@ export default function App() {
     return () => clearInterval(timer);
   }, [user, handleAuthSuccess]);
 
-  // Super-Admin Dev Bypass (`kwendland@wvusd.org`)
-  const handleDevBypass = (presetEmail = SUPER_ADMIN_EMAIL, presetRole = 'SUPER ADMIN') => {
+  // Dev Bypass (Super-Admin or Classroom Teacher)
+  const handleDevBypass = (presetEmail = SUPER_ADMIN_EMAIL, presetRole = 'SUPER ADMIN', presetName = '') => {
+    const isSuper = presetRole === 'SUPER ADMIN';
     const mockUser = {
       email: presetEmail,
-      name: presetEmail === SUPER_ADMIN_EMAIL ? 'Kurt Wendland (Super-Admin)' : presetEmail.split('@')[0],
+      name: presetName || (presetEmail === SUPER_ADMIN_EMAIL ? 'Kurt Wendland (Super-Admin)' : presetEmail.split('@')[0]),
       picture: null,
       role: presetRole,
-      isSuperAdmin: presetRole === 'SUPER ADMIN',
+      isSuperAdmin: isSuper,
       id_token: 'dev-bypass-token'
     };
 
     sessionStorage.setItem('wvusd_staff_token', mockUser.id_token);
     sessionStorage.setItem('wvusd_staff_user', JSON.stringify(mockUser));
 
+    hasAppliedInitialViewRef.current = false;
     setUser(mockUser);
     setCurrentRole(presetRole);
     setAuthError(null);
 
-    // Fetch live data immediately for test email
-    fetchLiveData(presetEmail);
+    // In dev bypass mode, request GAS with SUPER_ADMIN_EMAIL so GAS authorizes the fetch,
+    // while passing mockUser to apply the user's role and teacher matching
+    fetchLiveData(SUPER_ADMIN_EMAIL, mockUser);
   };
 
   // Sign Out
@@ -283,8 +336,27 @@ export default function App() {
     setAuthError(null);
     setFetchError(null);
     setBlockedEmail('');
+    setActiveView('overview');
+    setSelectedTeacher('ALL');
+    setSelectedSchool('ALL');
+    hasAppliedInitialViewRef.current = false;
+    hasInitialFetchedRef.current = false;
     if (window.google?.accounts?.id) {
       window.google.accounts.id.disableAutoSelect();
+    }
+  };
+
+  // Handle Super Admin Role Preview Switch
+  const handleRoleChange = (newRole) => {
+    setCurrentRole(newRole);
+    if (newRole === 'CLASSROOM TEACHER') {
+      setActiveView('teacher');
+      if (selectedTeacher === 'ALL' && availableTeachers.length > 0) {
+        setSelectedTeacher(availableTeachers[0]);
+      }
+    } else {
+      setActiveView('overview');
+      setSelectedTeacher('ALL');
     }
   };
 
@@ -387,10 +459,17 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => handleDevBypass()}
+                onClick={() => handleDevBypass(SUPER_ADMIN_EMAIL, 'SUPER ADMIN')}
                 className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
               >
                 Super-Admin Dev Bypass ({SUPER_ADMIN_EMAIL})
+              </button>
+
+              <button
+                onClick={() => handleDevBypass('mschweder@wvusd.org', 'CLASSROOM TEACHER', 'Megan Schweder')}
+                className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition"
+              >
+                Teacher Dev Bypass (mschweder@wvusd.org - Castle Rock Elementary)
               </button>
             </div>
           </div>
@@ -443,10 +522,19 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => handleDevBypass(SUPER_ADMIN_EMAIL, 'SUPER ADMIN')}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 shadow-2xs transition transform hover:-translate-y-0.5"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 shadow-2xs transition transform hover:-translate-y-0.5"
                 >
                   <ShieldCheck className="w-4 h-4 text-purple-600" />
                   <span>Super-Admin Dev Bypass ({SUPER_ADMIN_EMAIL})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDevBypass('mschweder@wvusd.org', 'CLASSROOM TEACHER', 'Megan Schweder')}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 shadow-2xs transition transform hover:-translate-y-0.5"
+                >
+                  <User className="w-4 h-4 text-blue-600" />
+                  <span>Teacher Dev Bypass (mschweder@wvusd.org - Castle Rock Elementary)</span>
                 </button>
               </div>
 
@@ -485,7 +573,7 @@ export default function App() {
             teachersList={availableTeachers}
             onSignOut={handleSignOut}
             currentRole={currentRole}
-            onRoleChange={setCurrentRole}
+            onRoleChange={handleRoleChange}
           />
 
           {/* Main Dashboard Workspace */}
