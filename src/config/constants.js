@@ -26,29 +26,29 @@ export const ALLOWED_DOMAINS = ["wvusd.org", "sub.wvusd.org"];
  * - Low Volatility / Scores (pp) : Applied to percentage/score metrics (Math Common Assessments 0-100%, Rubrics, Phonics %)
  */
 export const YOY_THRESHOLDS = {
-  // Neutral Tolerance Band around 0: fluctuations within this band are statistical noise / maintained parity
-  TOLERANCE_BAND_PCT: 2.0, // ±2% for relative metrics
-  TOLERANCE_BAND_PP: 2.0,  // ±2.0 pp for percentage metrics
+    // Neutral Tolerance Band around 0: fluctuations within this band are statistical noise / maintained parity
+    TOLERANCE_BAND_PCT: 2.0, // ±2% for relative metrics
+    TOLERANCE_BAND_PP: 2.0,  // ±2.0 pp for percentage metrics
 
-  // Relative Metrics (%) - STAR Reading IRL, Amira Fluency ARM
-  STANDARD_RELATIVE: {
-    STRONG_GROWTH: 10.0,        // > +10%
-    MODERATE_GROWTH_MIN: 2.0,   // +2% to +10%
-    MAINTAINED_MIN: -2.0,       // -2% to +2% (Neutral Tolerance Band)
-    MAINTAINED_MAX: 2.0,
-    MODERATE_DECLINE_MAX: -2.0, // -2% to -10%
-    SIGNIFICANT_DECLINE: -10.0  // < -10%
-  },
+    // Relative Metrics (%) - STAR Reading IRL, Amira Fluency ARM
+    STANDARD_RELATIVE: {
+        STRONG_GROWTH: 10.0,        // > +10%
+        MODERATE_GROWTH_MIN: 2.0,   // +2% to +10%
+        MAINTAINED_MIN: -2.0,       // -2% to +2% (Neutral Tolerance Band)
+        MAINTAINED_MAX: 2.0,
+        MODERATE_DECLINE_MAX: -2.0, // -2% to -10%
+        SIGNIFICANT_DECLINE: -10.0  // < -10%
+    },
 
-  // Low Volatility / Percentage Score Metrics (pp) - Math Common Assessment (0-100%), Rubrics, Phonics %
-  PERCENTAGE_SCORES: {
-    STRONG_GROWTH: 5.0,         // > +5.0 pp
-    MODERATE_GROWTH_MIN: 2.0,   // +2.0 pp to +5.0 pp
-    MAINTAINED_MIN: -2.0,       // -2.0 pp to +2.0 pp (Neutral Tolerance Band)
-    MAINTAINED_MAX: 2.0,
-    MODERATE_DECLINE_MAX: -2.0, // -2.0 pp to -5.0 pp
-    SIGNIFICANT_DECLINE: -5.0   // < -5.0 pp
-  }
+    // Low Volatility / Percentage Score Metrics (pp) - Math Common Assessment (0-100%), Rubrics, Phonics %
+    PERCENTAGE_SCORES: {
+        STRONG_GROWTH: 5.0,         // > +5.0 pp
+        MODERATE_GROWTH_MIN: 2.0,   // +2.0 pp to +5.0 pp
+        MAINTAINED_MIN: -2.0,       // -2.0 pp to +2.0 pp (Neutral Tolerance Band)
+        MAINTAINED_MAX: 2.0,
+        MODERATE_DECLINE_MAX: -2.0, // -2.0 pp to -5.0 pp
+        SIGNIFICANT_DECLINE: -5.0   // < -5.0 pp
+    }
 };
 
 /**
@@ -61,34 +61,34 @@ export const YOY_THRESHOLDS = {
  * - EO (English Only): Native English speakers.
  */
 export const LANGUAGE_CLASSIFICATIONS = {
-  EL: {
-    code: 'EL',
-    label: 'English Learner (LEP)',
-    badgeLabel: 'EL (LEP)',
-    countedInEL: true,
-    color: 'amber'
-  },
-  RFEP: {
-    code: 'RFEP',
-    label: 'Redesignated Fluent (RFEP)',
-    badgeLabel: 'Redesignated (RFEP)',
-    countedInEL: false,
-    color: 'teal'
-  },
-  IFEP: {
-    code: 'IFEP',
-    label: 'Initially Fluent (IFEP)',
-    badgeLabel: 'Initially Fluent (IFEP)',
-    countedInEL: false,
-    color: 'sky'
-  },
-  EO: {
-    code: 'EO',
-    label: 'English Only',
-    badgeLabel: 'EO',
-    countedInEL: false,
-    color: 'slate'
-  }
+    EL: {
+        code: 'EL',
+        label: 'English Learner (LEP)',
+        badgeLabel: 'EL (LEP)',
+        countedInEL: true,
+        color: 'amber'
+    },
+    RFEP: {
+        code: 'RFEP',
+        label: 'Redesignated Fluent (RFEP)',
+        badgeLabel: 'Redesignated (RFEP)',
+        countedInEL: false,
+        color: 'teal'
+    },
+    IFEP: {
+        code: 'IFEP',
+        label: 'Initially Fluent (IFEP)',
+        badgeLabel: 'Initially Fluent (IFEP)',
+        countedInEL: false,
+        color: 'sky'
+    },
+    EO: {
+        code: 'EO',
+        label: 'English Only',
+        badgeLabel: 'EO',
+        countedInEL: false,
+        color: 'slate'
+    }
 };
 
 export const DISTRICT_LOGO =
